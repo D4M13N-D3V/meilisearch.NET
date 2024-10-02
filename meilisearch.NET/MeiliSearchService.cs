@@ -33,7 +33,12 @@ public class MeiliSearchService:IMeiliSearchService
         _meiliSearchConfiguration = meiliSearchConfiguration;
         var binaryName = GetBinaryName();
         MakeExecutable(Path.Combine(AppContext.BaseDirectory, binaryName));
-        var apiKey = ApiKeyGenerator.GenerateApiKey();
+        string apiKey = "";
+        if (_meiliSearchConfiguration.EnableCustomApiKey)
+            apiKey = _meiliSearchConfiguration.ApiKey;
+        else
+            apiKey = ApiKeyGenerator.GenerateApiKey();
+        
         _sdkHttpClient = httpClient;
         _sdkHttpClient.BaseAddress = new Uri("http://localhost:"+meiliSearchConfiguration.MeiliPort);
         Sdk = new MeilisearchClient(httpClient, apiKey);
@@ -190,7 +195,11 @@ public class MeiliSearchService:IMeiliSearchService
     public void RefreshApiKey()
     {
         _logger.LogInformation("Refreshing API key.");
-        var apiKey = ApiKeyGenerator.GenerateApiKey();
+        string apiKey = "";
+        if (_meiliSearchConfiguration.EnableCustomApiKey)
+            apiKey = _meiliSearchConfiguration.ApiKey;
+        else
+            apiKey = ApiKeyGenerator.GenerateApiKey();
         Sdk = new MeilisearchClient(_sdkHttpClient, apiKey);
         _logger.LogInformation("New API key generated.");
         Restart();
