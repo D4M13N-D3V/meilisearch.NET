@@ -83,6 +83,49 @@ app.Run();
 Console.ReadLine();
 ```
 
+### MeiliSearchService Class Usage Guide
+
+This class is designed to manage the lifecycle of a MeiliSearch process. It provides methods to start, stop, and restart the MeiliSearch process.
+
+#### Methods
+
+##### Start
+This method is used to start the MeiliSearch process. It logs the start of the process, sets the status to **Starting**, and attempts to start the process. If the process starts successfully, the status is set to **Running** and a success message is logged. If it fails to start, an error message is logged and the exception is rethrown.
+
+```csharp
+MeiliSearchService service = new MeiliSearchService();
+service.Start();
+```
+
+##### Stop
+This method is used to stop the MeiliSearch process. It first checks if the process is running. If not, it logs a warning and throws an exception. If the process is running, it logs the stop of the process, sets the status to **Stopping**, and attempts to stop the process. If the process stops successfully, the status is set to **Stopped** and a success message is logged.
+
+```csharp
+service.Stop();
+```
+
+##### Restart
+This method is used to restart the MeiliSearch process. It logs the restart of the process, stops the process using the **Stop** method, and starts the process using the **Start** method.
+
+```csharp
+service.Restart();
+```
+
+#### Status
+The **Status** property indicates the current status of the MeiliSearch process. It can be one of the following values:
+- **Starting**: The process is in the process of starting.
+- **Running**: The process is currently running.
+- **Stopping**: The process is in the process of stopping.
+- **Stopped**: The process is currently stopped.
+
+```csharp
+MeiliSearchStatus status = service.Status;
+```
+
+> **Note**: Please note that you should handle exceptions appropriately when using these methods, as they may throw exceptions if the process fails to start or stop.
+```
+
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
