@@ -9,50 +9,54 @@ MeiliSearch .NET Integration is a NuGet package that seamlessly embeds MeiliSear
 
 ## Features
 
-- **Embedded MeiliSearch**: Integrate MeiliSearch directly into your application.
-- **Background Process Management**: Automatically handles the lifecycle of the MeiliSearch process.
-- **Health Monitoring**: Regular checks on the health of the MeiliSearch instance.
-- **API Key Management**: An API key is automatically regenerated every time the MeiliSearch service starts unless one is specified in the configuration.
-- **Resource Monitoring**: Monitor the resources being used including storage by your MeiliSearch.
-- **Future Index Management**: Upcoming feature to automatically compress and decompress indexes for optimized local storage.
+- [x] **Embedded MeiliSearch**: Integrate MeiliSearch directly into your application.
+- [x] **Background Process Management**: Automatically handles the lifecycle of the MeiliSearch process.
+- [x] **Health Monitoring**: Regular checks on the health of the MeiliSearch instance.
+- [x] **API Key Management**: An API key is automatically regenerated every time the MeiliSearch service starts unless one is specified in the configuration.
+- [ ] **Resource Monitoring**: Monitor the resources being used including storage by your MeiliSearch.
+- [ ] **Future Index Management**: Upcoming feature to automatically compress and decompress indexes for optimized local storage.
+
+Here’s a revised section for your README that includes details about installing your package from your GitHub Package repository:
 
 ## Installation
 
-To add the MeiliSearch .NET Integration package to your project, use the following command in the Package Manager Console:
+To add the MeiliSearch .NET Integration package to your project, you can install it directly from the GitHub Package repository. Follow the steps below based on your preferred method:
+
+### Package Manager Console
+
+Open the Package Manager Console in Visual Studio and run the following command:
 
 ```bash
-Install-Package YourPackageName
-```
+Install-Package D4M13N-D3V/meilisearch.NET
 
-Or, if you're using the .NET CLI:
+
+### .NET CLI
+
+If you're using the .NET CLI, run the following command in your terminal:
 
 ```bash
-dotnet add package YourPackageName
+dotnet add package D4M13N-D3V/meilisearch.NET
 ```
 
-## Configuration
+### Configure NuGet
 
-To configure the MeiliSearch service, add the following section to your `appsettings.json` file:
+To install the package, ensure your project is configured to use GitHub Packages as a NuGet source. You can do this by adding the following to your `nuget.config` file:
 
-```json
-{
-  ...
-  "Meili": {
-    "Port": 7700,
-    "UiEnabled": true,
-    "CustomApiKey": false,
-    "ApiKey": "YourOptionalApiKey" // Specify this if you want a fixed API key
-  },
-  ...
-  "Logging": {
-    "LogLevel": {
-      "Default": "Trace",
-      "Microsoft.AspNetCore": "Trace"
-    }
-  },
-  "AllowedHosts": "*"
-}
+```xml
+<configuration>
+  <packageSources>
+    <add key="GitHub" value="https://nuget.pkg.github.com/D4M13N-D3V/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <GitHub>
+      <add key="Username" value="YOUR_GITHUB_USERNAME" />
+      <add key="ClearTextPassword" value="YOUR_GITHUB_TOKEN" />
+    </GitHub>
+  </packageSourceCredentials>
+</configuration>
 ```
+
+Make sure to replace `YOUR_GITHUB_USERNAME` with your GitHub username and `YOUR_GITHUB_TOKEN` with a personal access token that has read access to packages.
 
 ### AppSettings Options
 
@@ -124,7 +128,6 @@ MeiliSearchStatus status = service.Status;
 ```
 
 > **Note**: Please note that you should handle exceptions appropriately when using these methods, as they may throw exceptions if the process fails to start or stop.
-```
 
 
 ## License
