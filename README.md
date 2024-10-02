@@ -124,7 +124,6 @@ MeiliSearchStatus status = service.Status;
 ```
 
 > **Note**: Please note that you should handle exceptions appropriately when using these methods, as they may throw exceptions if the process fails to start or stop.
-```
 
 
 ## License
