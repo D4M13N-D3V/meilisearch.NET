@@ -57,7 +57,7 @@ jobs:
       - name: Set Package Version
         uses: vers-one/dotnet-project-version-updater@v1.6
         with:
-          file: "./meilisearch.NET/meilisearch.NET.csproj.csproj"
+          file: "./meilisearch.NET/meilisearch.NET.csproj"
           version: ${{ env.GitVersion_SemVer }}
 
       - run: dotnet build --configuration Release
