@@ -2,7 +2,7 @@
 
 # MeiliSearch .NET Embedded
 
-[![NuGet Version](https://img.shields.io/nuget/v/D4M13N-D3V/meilisearch.NET.svg)](https://nuget.pkg.github.com/D4M13N-D3V/meilisearch.NET)  
+[![NuGet Version](https://img.shields.io/nuget/v/D4M13N-D3V/meilisearch.NET.svg)](https://nuget.pkg.github.com/D4M13N-D3V/packages/meilisearch.NET)  
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview
