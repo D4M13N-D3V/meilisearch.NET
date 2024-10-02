@@ -1,0 +1,66 @@
+name: build-packages
+on:
+  push:
+    branches: 
+      - 'main'
+jobs:
+  connectors-packages:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_INSTALL_DIR: "/home/runner"
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: 'Cleanup build folder'
+        run: |
+          rm ./* -r || true
+          rm ./.??* -r  || true
+          
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - uses: gittools/actions/gitversion/setup@v1.1.1
+        with:
+          versionSpec: '5.x'
+      - uses: gittools/actions/gitversion/execute@v1.1.1
+        with:
+          useConfigFile: true
+          configFilePath: GitVersion.yml
+      - name: Tag branch
+        run: |
+          git tag $GitVersion_SemVer
+          git push origin $GitVersion_SemVer
+        
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 6.0.x
+
+      - name: Authorise NuGet
+        uses: StirlingLabs/GithubNugetAuthAction@main
+        with:
+          owner: data443
+          name: Data443
+          token: ${{secrets.PACKAGE_TOKEN}}
+
+      - name: Set up GitVersion
+        uses: gittools/actions/gitversion/setup@v0.9.15
+        with:
+          versionSpec: '5.x'
+    
+      - uses: gittools/actions/gitversion/execute@v0.9.15
+        with:
+          useConfigFile: true
+          configFilePath: GitVersion.yml
+
+      - name: Set Package Version
+        uses: vers-one/dotnet-project-version-updater@v1.6
+        with:
+          file: "./meilisearch.NET/meilisearch.NET.csproj.csproj"
+          version: ${{ env.GitVersion_SemVer }}
+
+      - run: dotnet build --configuration Release
+      - run: dotnet pack ./meilisearch.NET/meilisearch.NET.csproj --output nuget-packages --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://nuget.pkg.github.com/data443/index.json" --api-key ${{secrets.GITHUB_TOKEN}} 
+      - run: dotnet nuget remove source Data443
