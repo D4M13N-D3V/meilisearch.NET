@@ -1,0 +1,7 @@
+meilisearch.NET/meilisearch-linux-arm filter=lfs diff=lfs merge=lfs -text
+meilisearch.NET/meilisearch-linux-x64 filter=lfs diff=lfs merge=lfs -text
+meilisearch.NET/meilisearch-mac-arm filter=lfs diff=lfs merge=lfs -text
+meilisearch.NET/meilisearch-mac-x64 filter=lfs diff=lfs merge=lfs -text
+meilisearch.NET/meilisearch-windows.exe filter=lfs diff=lfs merge=lfs -text
+meilisearch-macos-arm filter=lfs diff=lfs merge=lfs -text
+meilisearch-macos-x64 filter=lfs diff=lfs merge=lfs -text
