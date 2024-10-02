@@ -40,6 +40,7 @@ To configure the MeiliSearch service, add the following section to your `appsett
   "Meili": {
     "Port": 7700,
     "UiEnabled": true,
+    "CustomApiKey": false,
     "ApiKey": "YourOptionalApiKey" // Specify this if you want a fixed API key
   },
   ...
