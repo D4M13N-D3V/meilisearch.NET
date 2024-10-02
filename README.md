@@ -1,6 +1,8 @@
-﻿# MeiliSearch .NET Embedded
+---
 
-[![NuGet Version](https://img.shields.io/nuget/v/YourPackageName.svg)](https://www.nuget.org/packages/YourPackageName)  
+# MeiliSearch .NET Embedded
+
+[![NuGet Version](https://img.shields.io/nuget/v/D4M13N-D3V/meilisearch.NET.svg)](https://www.nuget.org/packages/D4M13N-D3V/meilisearch.NET)  
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview
@@ -16,8 +18,6 @@ MeiliSearch .NET Integration is a NuGet package that seamlessly embeds MeiliSear
 - [ ] **Resource Monitoring**: Monitor the resources being used including storage by your MeiliSearch.
 - [ ] **Future Index Management**: Upcoming feature to automatically compress and decompress indexes for optimized local storage.
 
-Here’s a revised section for your README that includes details about installing your package from your GitHub Package repository:
-
 ## Installation
 
 To add the MeiliSearch .NET Integration package to your project, you can install it directly from the GitHub Package repository. Follow the steps below based on your preferred method:
@@ -28,7 +28,7 @@ Open the Package Manager Console in Visual Studio and run the following command:
 
 ```bash
 Install-Package D4M13N-D3V/meilisearch.NET
-
+```
 
 ### .NET CLI
 
@@ -58,7 +58,7 @@ To install the package, ensure your project is configured to use GitHub Packages
 
 Make sure to replace `YOUR_GITHUB_USERNAME` with your GitHub username and `YOUR_GITHUB_TOKEN` with a personal access token that has read access to packages.
 
-### AppSettings Options
+## AppSettings Options
 
 - **Port**: The port on which MeiliSearch will run (default is `7700`).
 - **UiEnabled**: A boolean value to enable or disable the MeiliSearch UI (default is `true`).
@@ -66,7 +66,7 @@ Make sure to replace `YOUR_GITHUB_USERNAME` with your GitHub username and `YOUR_
 
 ## Usage
 
-To set up the MeiliSearch service in your application, you'll need to configure dependency injection. Here’s an example of how to do that:
+To set up the MeiliSearch service in your application, configure dependency injection as shown below:
 
 ```csharp
 using System.Net;
@@ -88,47 +88,42 @@ app.Run();
 Console.ReadLine();
 ```
 
-### MeiliSearchService Class Usage Guide
+## MeiliSearchService Class Usage Guide
 
-This class is designed to manage the lifecycle of a MeiliSearch process. It provides methods to start, stop, and restart the MeiliSearch process.
+### Methods
 
-#### Methods
+#### Start
 
-##### Start
-This method is used to start the MeiliSearch process. It logs the start of the process, sets the status to **Starting**, and attempts to start the process. If the process starts successfully, the status is set to **Running** and a success message is logged. If it fails to start, an error message is logged and the exception is rethrown.
+Starts the MeiliSearch process. Logs the start of the process, sets the status to **Starting**, and attempts to start the process.
 
 ```csharp
 MeiliSearchService service = new MeiliSearchService();
 service.Start();
 ```
 
-##### Stop
-This method is used to stop the MeiliSearch process. It first checks if the process is running. If not, it logs a warning and throws an exception. If the process is running, it logs the stop of the process, sets the status to **Stopping**, and attempts to stop the process. If the process stops successfully, the status is set to **Stopped** and a success message is logged.
+#### Stop
+
+Stops the MeiliSearch process. Logs the stop of the process, sets the status to **Stopping**, and attempts to stop the process.
 
 ```csharp
 service.Stop();
 ```
 
-##### Restart
-This method is used to restart the MeiliSearch process. It logs the restart of the process, stops the process using the **Stop** method, and starts the process using the **Start** method.
+#### Restart
+
+Restarts the MeiliSearch process. Stops the process using the **Stop** method and starts it using the **Start** method.
 
 ```csharp
 service.Restart();
 ```
 
-#### Status
-The **Status** property indicates the current status of the MeiliSearch process. It can be one of the following values:
-- **Starting**: The process is in the process of starting.
-- **Running**: The process is currently running.
-- **Stopping**: The process is in the process of stopping.
-- **Stopped**: The process is currently stopped.
+### Status
+
+Indicates the current status of the MeiliSearch process.
 
 ```csharp
 MeiliSearchStatus status = service.Status;
 ```
-
-> **Note**: Please note that you should handle exceptions appropriately when using these methods, as they may throw exceptions if the process fails to start or stop.
-
 
 ## License
 
@@ -145,6 +140,5 @@ For any issues or questions, please open an issue on GitHub or contact us via [y
 ---
 
 Feel free to customize this README as necessary for your package, especially regarding the project name and license details!
-```
 
-This revision includes details about the API key regeneration and how to specify a fixed API key if desired.
+---
