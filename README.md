@@ -16,19 +16,55 @@ MeiliSearch .NET Integration is a NuGet package that seamlessly embeds MeiliSear
 - [ ] **Resource Monitoring**: Monitor the resources being used including storage by your MeiliSearch.
 - [ ] **Future Index Management**: Upcoming feature to automatically compress and decompress indexes for optimized local storage.
 
+Here’s a revised section for your README that includes details about installing your package from your GitHub Package repository:
+
 ## Installation
 
-To add the MeiliSearch .NET Integration package to your project, use the following command in the Package Manager Console:
+To add the MeiliSearch .NET Integration package to your project, you can install it directly from the GitHub Package repository. Follow the steps below based on your preferred method:
+
+### Package Manager Console
+
+Open the Package Manager Console in Visual Studio and run the following command:
 
 ```bash
-Install-Package YourPackageName
-```
+Install-Package D4M13N-D3V/meilisearch.NET
 
-Or, if you're using the .NET CLI:
+
+### .NET CLI
+
+If you're using the .NET CLI, run the following command in your terminal:
 
 ```bash
-dotnet add package YourPackageName
+dotnet add package D4M13N-D3V/meilisearch.NET
 ```
+
+### Configure NuGet
+
+To install the package, ensure your project is configured to use GitHub Packages as a NuGet source. You can do this by adding the following to your `nuget.config` file:
+
+```xml
+<configuration>
+  <packageSources>
+    <add key="GitHub" value="https://nuget.pkg.github.com/D4M13N-D3V/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <GitHub>
+      <add key="Username" value="YOUR_GITHUB_USERNAME" />
+      <add key="ClearTextPassword" value="YOUR_GITHUB_TOKEN" />
+    </GitHub>
+  </packageSourceCredentials>
+</configuration>
+```
+
+Make sure to replace `YOUR_GITHUB_USERNAME` with your GitHub username and `YOUR_GITHUB_TOKEN` with a personal access token that has read access to packages.
+
+### Additional Notes
+
+- Ensure that you have the necessary permissions to access the package.
+- Refer to the [GitHub Packages documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry) for more information on using GitHub Packages with NuGet.
+```
+
+Feel free to customize any parts to better fit your package or add any additional details that might be helpful for your users!
 
 ## Configuration
 
