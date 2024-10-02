@@ -42,7 +42,7 @@ jobs:
         with:
           owner: data443
           name: Data443
-          token: ${{secrets.PACKAGE_TOKEN}}
+          token: ${{secrets.GITHUB_TOKEN}}
 
       - name: Set up GitVersion
         uses: gittools/actions/gitversion/setup@v0.9.15
@@ -62,5 +62,5 @@ jobs:
 
       - run: dotnet build --configuration Release
       - run: dotnet pack ./meilisearch.NET/meilisearch.NET.csproj --output nuget-packages --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
-      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://nuget.pkg.github.com/D4M13N-D3V/index.json" --api-key ${{secrets.PACKAGE_TOKEN}}
+      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://nuget.pkg.github.com/D4M13N-D3V/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
       - run: dotnet nuget remove source Data443
