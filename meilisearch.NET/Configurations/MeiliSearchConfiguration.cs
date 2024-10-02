@@ -16,5 +16,5 @@ public class MeiliSearchConfiguration
     public int MeiliPort => _configuration.GetValue<int>(_meiliPort);
     public bool UiEnabled => _configuration.GetValue<bool>(_meiliUiEnabled);
     public string ApiKey => _configuration.GetValue<string>(_meiliApiKey) ?? "";
-    public bool EnableCustomApiKey => _configuration.GetValue<bool>(_meiliEnableCustomApiKey);
+    public bool EnableCustomApiKey => _configuration.GetValue<bool>(_meiliEnableCustomApiKey); 
 }
