@@ -58,38 +58,6 @@ To install the package, ensure your project is configured to use GitHub Packages
 
 Make sure to replace `YOUR_GITHUB_USERNAME` with your GitHub username and `YOUR_GITHUB_TOKEN` with a personal access token that has read access to packages.
 
-### Additional Notes
-
-- Ensure that you have the necessary permissions to access the package.
-- Refer to the [GitHub Packages documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry) for more information on using GitHub Packages with NuGet.
-```
-
-Feel free to customize any parts to better fit your package or add any additional details that might be helpful for your users!
-
-## Configuration
-
-To configure the MeiliSearch service, add the following section to your `appsettings.json` file:
-
-```json
-{
-  ...
-  "Meili": {
-    "Port": 7700,
-    "UiEnabled": true,
-    "CustomApiKey": false,
-    "ApiKey": "YourOptionalApiKey" // Specify this if you want a fixed API key
-  },
-  ...
-  "Logging": {
-    "LogLevel": {
-      "Default": "Trace",
-      "Microsoft.AspNetCore": "Trace"
-    }
-  },
-  "AllowedHosts": "*"
-}
-```
-
 ### AppSettings Options
 
 - **Port**: The port on which MeiliSearch will run (default is `7700`).
