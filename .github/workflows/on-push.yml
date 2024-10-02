@@ -35,7 +35,7 @@ jobs:
         
       - uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: 6.0.x
+          dotnet-version: 8.0.x
 
       - name: Authorise NuGet
         uses: StirlingLabs/GithubNugetAuthAction@main
@@ -62,5 +62,5 @@ jobs:
 
       - run: dotnet build --configuration Release
       - run: dotnet pack ./meilisearch.NET/meilisearch.NET.csproj --output nuget-packages --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
-      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://nuget.pkg.github.com/data443/index.json" --api-key ${{secrets.GITHUB_TOKEN}} 
+      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://nuget.pkg.github.com/D4M13N-D3V/index.json" --api-key ${{secrets.PACKAGE_TOKEN}}
       - run: dotnet nuget remove source Data443
