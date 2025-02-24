@@ -1,4 +1,3 @@
----
 
 # MeiliSearch .NET Embedded
 
