@@ -16,7 +16,11 @@ jobs:
         run: |
           rm ./* -r || true
           rm ./.??* -r  || true
-          
+      
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8.0.x
+
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -32,10 +36,6 @@ jobs:
         run: |
           git tag $GitVersion_SemVer
           git push origin $GitVersion_SemVer
-        
-      - uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: 8.0.x
 
       - name: Authorise NuGet
         uses: StirlingLabs/GithubNugetAuthAction@main
