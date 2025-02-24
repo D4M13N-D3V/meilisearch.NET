@@ -42,7 +42,7 @@ jobs:
         with:
           owner: data443
           name: Data443
-          token: ${{secrets.GITHUB_TOKEN}}
+          token: ${{secrets.GITHUBTOKEN}}
 
       - name: Set up GitVersion
         uses: gittools/actions/gitversion/setup@v0.9.15
