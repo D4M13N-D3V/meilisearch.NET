@@ -37,13 +37,6 @@ jobs:
           git tag $GitVersion_SemVer
           git push origin $GitVersion_SemVer
 
-      - name: Authorise NuGet
-        uses: StirlingLabs/GithubNugetAuthAction@main
-        with:
-          owner: data443
-          name: Data443
-          token: ${{secrets.GITHUBTOKEN}}
-
       - name: Set up GitVersion
         uses: gittools/actions/gitversion/setup@v0.9.15
         with:
@@ -62,5 +55,5 @@ jobs:
 
       - run: dotnet build --configuration Release
       - run: dotnet pack ./meilisearch.NET/meilisearch.NET.csproj --output nuget-packages --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
-      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://nuget.pkg.github.com/D4M13N-D3V/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
+      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://git.d4m13n.dev/api/packages/damien/nuget/index.json" --api-key ${{secrets.GITEA_TOKEN}}
       - run: dotnet nuget remove source Data443
