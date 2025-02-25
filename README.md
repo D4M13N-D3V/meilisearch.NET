@@ -14,10 +14,11 @@ MeiliSearch .NET Integration is a NuGet package that seamlessly embeds MeiliSear
 - [x] **Embedded MeiliSearch**: Integrate MeiliSearch directly into your application.
 - [x] **Manage Indexes**: Manage your indexs and documents through the SDK, you can still use the default Meilisearch SDK.
 - [x] **Background Process Management**: Automatically handles the lifecycle of the MeiliSearch process.
-- [ ] **Health Monitoring**: Regular checks on the health of the MeiliSearch instance.
-- [ ] **API Key Management**: An API key is automatically regenerated every time the MeiliSearch service starts unless one is specified in the configuration.
+- [x] **Health Monitoring**: Regular checks on the health of the MeiliSearch instance to ensure it stays running.
+- [x] **API Key Management**: An API key is automatically regenerated every time the MeiliSearch service starts unless one is specified in the configuration.
 - [ ] **Resource Monitoring**: Monitor the resources being used including storage by your MeiliSearch.
 - [ ] **Future Index Management**: Upcoming feature to automatically compress and decompress indexes for optimized local storage.
+- [ ] **Caching Mechanism**: Cache the comrpessed indexes so they are returned when you ask for a list of all indexs.
 
 ## Installation
 
