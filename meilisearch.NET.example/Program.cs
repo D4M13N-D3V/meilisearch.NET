@@ -1,36 +1,71 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
+using System.Threading.Tasks;
 using meilisearch.NET;
 using meilisearch.NET.Configurations;
 using meilisearch.NET.Extensions;
-using meilisearch.NET.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-ServicePointManager.SecurityProtocol = SecurityProtocolType.SystemDefault;
-var builder = Host.CreateApplicationBuilder();
-builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+public class Program
+{
+    public static async Task Main(string[] args)
+    {
+        // Set security protocol to SystemDefault
+        ServicePointManager.SecurityProtocol = SecurityProtocolType.SystemDefault;
 
-builder.Services.AddMeiliSearchService();
-builder.Services.AddSingleton<test>();
+        // Configure and build the host
+        IHost host = CreateHostBuilder(args).Build();
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(LogLevel.Information);
+        //Resolve test dependency
+        var testService = host.Services.GetService<test>();
 
-builder.Services.AddLogging();
-var app = builder.Build();
+        // Run the host
+        await host.RunAsync();
+        
+    }
 
-app.Services.GetService<test>();
+    
+    
+    public static IHostBuilder CreateHostBuilder(string[] args) =>
+        Host.CreateDefaultBuilder(args)
+            .ConfigureAppConfiguration((hostingContext, configuration) =>
+            {
+                configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                configuration.AddEnvironmentVariables(); // Add environment variables as well (optional, but good practice)
+                configuration.AddCommandLine(args); // Support command line arguments
+            })
+            .ConfigureServices((hostContext, services) =>
+            {
+                services.AddMeiliSearchService();
+                services.AddSingleton<test>();
 
-app.Run();
-Console.ReadLine();
+                // Add logging configuration
+                services.AddLogging(builder =>
+                {
+                    builder.ClearProviders();
+                    builder.AddConsole();
+                    builder.SetMinimumLevel(LogLevel.Information);
+                });
+             })
+            .UseConsoleLifetime(options =>
+            {
+                options.SuppressStatusMessages = true;  // This is optional: you can suppress the "Application started" message
+            });
+}
 
 public class test
 {
-    public test(IMeiliSearchService service)
+    private readonly ILogger<test> _logger;
+
+    public test(MeilisearchService service, ILogger<test> logger)
     {
-        service.Start();
+        
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // You can perform actions with the Meilisearch service here
+        _logger.LogInformation("Test service initialized.");
     }
 }

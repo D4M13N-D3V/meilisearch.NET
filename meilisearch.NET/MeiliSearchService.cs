@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -13,270 +15,285 @@ using Index = Meilisearch.Index;
 namespace meilisearch.NET;
 
 
-public class MeiliSearchService:IMeiliSearchService
+public class MeilisearchService:IDisposable
 {
-
-    public MeilisearchClient Sdk { get; set; }
-    public MeiliSearchStatus Status { get; set; }
-    
-    private readonly MeiliSearchConfiguration _meiliSearchConfiguration;
-    private readonly ProcessStartInfo _processStartInfo;
-    private readonly ILogger<MeiliSearchService> _logger;
-    private readonly HttpClient _sdkHttpClient;
-
-    private Timer _healthCheckTimer;
-    private Process? _process;
-    
-    public MeiliSearchService(HttpClient httpClient, ILogger<MeiliSearchService> logger, MeiliSearchConfiguration meiliSearchConfiguration)
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<MeilisearchService> _logger;
+    public readonly MeilisearchClient Client;
+    private readonly MeiliSearchConfiguration _meiliConfiguration;
+    private Process process;
+    private ObservableCollection<KeyValuePair<string,IDocument>> _documentCollection;
+    private const int THRESHOLD = 10000;
+    private readonly List<string> FIELDS = new List<string>
     {
+        "id",
+        "path",
+        "createdAtUtc",
+        "updatedAtUtc",
+        "lastAccessedAtUtc",
+        "name",
+        "type",
+        "ext",
+        "size"
+    };
+
+    public MeilisearchService(HttpClient httpClient, ILogger<MeilisearchService> logger, MeiliSearchConfiguration meiliConfiguration)
+    {
+        _httpClient = httpClient;
+        _meiliConfiguration = meiliConfiguration;
         _logger = logger;
-        _meiliSearchConfiguration = meiliSearchConfiguration;
-        var binaryName = GetBinaryName();
-        MakeExecutable(Path.Combine(AppContext.BaseDirectory, binaryName));
-        string apiKey = "";
-        if (_meiliSearchConfiguration.EnableCustomApiKey)
-            apiKey = _meiliSearchConfiguration.ApiKey;
-        else
-            apiKey = ApiKeyGenerator.GenerateApiKey();
-        
-        _sdkHttpClient = httpClient;
-        _sdkHttpClient.BaseAddress = new Uri("http://localhost:"+meiliSearchConfiguration.MeiliPort);
-        Sdk = new MeilisearchClient(httpClient, apiKey);
-        var path = Path.Combine(AppContext.BaseDirectory, binaryName);
-        var args = "--http-addr 127.0.0.1:" + _meiliSearchConfiguration.MeiliPort 
-                        + " --master-key "+apiKey
-                        + " --env "+(_meiliSearchConfiguration.UiEnabled ? "development" : "production")
-                        +" --db-path "+GetDataLocation();
-        _processStartInfo = new ProcessStartInfo
+        Client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort );
+        _documentCollection = new ObservableCollection<KeyValuePair<string,IDocument>>();
+        _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
+        Initialize();
+    }
+    
+
+    
+    #region Private
+
+    private async void Initialize()
+    {
+        await StartMeilisearch();
+        EnsureMeilisearchIsRunning();
+        EnsureRepositoryIndexExists();
+    }
+    
+    private async void EnsureRepositoryIndexExists()
+    {
+        Task.Delay(5000).Wait();
+        var indexes = Client.GetAllIndexesAsync().Result;
+        if (indexes.Results.Any(x => x.Uid == "index_bindings"))
         {
-            FileName = path,
+            _logger.LogInformation("index bindings already exists, skipping creation of index.");
+            return;
+        }
+        _logger.LogInformation("Creating index bindings for SDK to track indexs...");
+        Client.CreateIndexAsync("index_bindings").Wait();
+    }
+    
+    private string GetMeilisearchBinaryName()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return "meilisearch-windows.exe";
+        }
+        
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                ? "meilisearch-macos-arm"
+                : "meilisearch-macos-x64";
+        }
+        
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                ? "meilisearch-linux-arm"
+                : "meilisearch-linux-x64";
+        }
+
+        throw new PlatformNotSupportedException("Current platform and architecture combination is not supported");
+    }
+
+    private void EnsureMeilisearchIsRunning()
+    {
+        if (!IsMeilisearchRunning())
+        {
+            StartMeilisearch().Wait();
+        }
+    }
+
+    private bool IsMeilisearchRunning()
+    {
+        var processName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) 
+            ? "meilisearch-windows" 
+            : "meilisearch";
+        var processes = Process.GetProcessesByName(processName);
+        return processes.Any();
+    }
+
+    private async Task StartMeilisearch()
+    {
+        var binaryName = GetMeilisearchBinaryName();
+        var binaryPath = Path.Combine(AppContext.BaseDirectory, binaryName);
+        
+        if (!File.Exists(binaryPath))
+        {
+            _logger.LogError($"Meilisearch binary not found at: {binaryPath}");
+            throw new FileNotFoundException($"Could not find Meilisearch binary: {binaryName}");
+        }
+
+        // Set execute permissions on Unix-like systems
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            try
+            {
+                var chmod = Process.Start("chmod", $"+x {binaryPath}");
+                chmod?.WaitForExit();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Failed to set execute permissions on binary: {ex.Message}");
+            }
+        }
+        var host = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) 
+            ? "localhost" 
+            : "127.0.0.1";
+        var args = "--http-addr "+host+":" + _meiliConfiguration.MeiliPort 
+                  + " --env development --db-path " 
+                  + Path.Combine(AppContext.BaseDirectory, "db");
+
+        var processStartInfo = new ProcessStartInfo
+        {
+            FileName = binaryPath,
             Arguments = args,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        Status = MeiliSearchStatus.Stopped;
-        _logger?.LogInformation($"Meilisearch service initialized with the UI {(_meiliSearchConfiguration.UiEnabled ? "Enabled" : "Disabled)")} with database located at {GetDataLocation()}.");
-    }
 
-
-
-    private static void MakeExecutable(string filePath)
-    {
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            throw new ArgumentException("File path cannot be null or empty.", nameof(filePath));
-        }
-
-        // Check if the file exists
-        if (!File.Exists(filePath))
-        {
-            throw new FileNotFoundException($"The file '{filePath}' does not exist.", filePath);
-        }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            // For Linux and macOS, use chmod +x
-            ExecuteCommand($"chmod +x \"{filePath}\"");
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-        }
-        else
-        {
-            throw new PlatformNotSupportedException("This platform is not supported.");
-        }
-
-        Console.WriteLine($"File '{filePath}' has been made executable.");
-    }
-    private static void ExecuteCommand(string command)
-    {
-        var processStartInfo = new ProcessStartInfo
-        {
-            FileName = "/bin/bash", // Use bash for Linux and macOS
-            Arguments = $"-c \"{command}\"",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using (var process = Process.Start(processStartInfo))
-        {
-            process.WaitForExit();
-
-            // Optionally handle output and errors
-            string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
-
-            if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException($"Error executing command: {error}");
-            }
-        }
-    }
-    private static string GetDataLocation()
-    {
-        return Path.Combine(AppContext.BaseDirectory, "data");
-        string appDataDirectory;
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            appDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MeiliSearchEmbedded");
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            appDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Library", "Application Support", "MeiliSearchEmbedded");
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            appDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), ".config", "MeiliSearchEmbedded");
-        }
-        else
-        {
-            throw new PlatformNotSupportedException("Unsupported OS.");
-        }
-        return appDataDirectory;
-    }
-    private static string GetBinaryName()
-    {
-        string os = RuntimeInformation.OSDescription.ToLowerInvariant();
-        string architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
-        string platform;
-
-        if (os.Contains("linux"))
-        {
-            platform = "meilisearch-linux-" + (architecture.Contains("arm") ? "arm" : "x64");
-        }
-        else if (os.Contains("macos") || os.Contains("darwin"))
-        {
-            platform = "meilisearch-macos-" + (architecture.Contains("arm") ? "arm" : "x64");
-        }
-        else if (os.Contains("windows"))
-        {
-            platform = "meilisearch-windows.exe";
-        }
-        else
-        {
-            throw new PlatformNotSupportedException("Operating system not supported.");
-        }
-
-        return platform;
-    }
-    private bool MeilisSearchReachable()
-    {
-        string host = "127.0.0.1"; // localhost
-        int port = _meiliSearchConfiguration.MeiliPort;
-        try
-        {
-            using (TcpClient client = new TcpClient())
-            {
-                client.Connect(host, port);
-                return true;
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-    
-    public bool HealthCheck(object? state)
-    {
-        if (_process == null)
-            throw new Exception("Meilisearch process is not running.");
-        var responding = _process.Responding;
-        var exited = _process.HasExited || _process.ExitCode == 0;
-        var reachable = MeilisSearchReachable();
-        return responding && exited && reachable;
-    }
-    
-    public void RefreshApiKey()
-    {
-        _logger.LogInformation("Refreshing API key.");
-        string apiKey = "";
-        if (_meiliSearchConfiguration.EnableCustomApiKey)
-            apiKey = _meiliSearchConfiguration.ApiKey;
-        else
-            apiKey = ApiKeyGenerator.GenerateApiKey();
-        Sdk = new MeilisearchClient(_sdkHttpClient, apiKey);
-        _logger.LogInformation("New API key generated.");
-        Restart();
-    }
-
-    public void Start()
-    {
-        _logger.LogInformation("Starting MeiliSearch process.");
-        Status = MeiliSearchStatus.Starting;
-        _process = new Process { StartInfo = _processStartInfo };
+        process = new Process { StartInfo = processStartInfo };
         
         try
         {
-            _process.Start();
-            Status = MeiliSearchStatus.Running;
-            _logger.LogInformation("MeiliSearch process started successfully.");
+            process.Start();
+            await Task.Delay(5000); // Wait for the process to start
+            _logger.LogInformation($"Started Meilisearch process using binary: {binaryName}");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to start MeiliSearch process.");
+            _logger.LogError($"Failed to start Meilisearch: {ex.Message}");
             throw;
         }
     }
-
-    public void Restart()
+    
+    private void CheckIfNeedDocumentSync(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        _logger.LogInformation("Restarting MeiliSearch process.");
+        CheckIfNeedDocumentSync(THRESHOLD);
+    }
+
+    private void CheckIfNeedDocumentSync(int? threshold = null)
+    {
+        threshold = threshold ?? 0;
+        if(_documentCollection.Count>=threshold)
+        {
+            _logger.LogInformation("Threshold reached, syncing metadata to server.");
+            var grouped = _documentCollection.GroupBy(pair => pair.Key)
+                .ToDictionary(group => group.Key, group => group.Select(pair => pair.Value).ToList());
+            foreach (var repository in grouped)
+            {
+                var repositoryIndex = Client.GetIndexAsync(repository.Key).Result;
+                var documents = _documentCollection.ToList();
+                _documentCollection.Clear();
+                var result = RetryAsync(() => repositoryIndex.AddDocumentsAsync(repository.Value, "id")).Result;
+            }
+        }
+    }
+    
+    private async Task<T> RetryAsync<T>(Func<Task<T>> action, int maxRetries = 3, int delayMilliseconds = 1000)
+    {
+        int retryCount = 0;
+        while (true)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (Exception ex)
+            {
+                retryCount++;
+                if (retryCount >= maxRetries)
+                {
+                    _logger.LogError($"Operation failed after {maxRetries} retries: {ex.Message}");
+                    throw;
+                }
+                _logger.LogWarning($"Operation failed, retrying {retryCount}/{maxRetries}...");
+                await Task.Delay(delayMilliseconds);
+            }
+        }
+    }
+    #endregion
+    
+    #region Public
+    /// <summary>
+    /// Creates a new index on the Meilisearch server if it does not already exist.
+    /// </summary>
+    /// <param name="indexName">The name for the new index.</param>
+    public void CreateIndex(string indexName)
+    {
+        var indexes = Client.GetAllIndexesAsync().Result;
+        if (indexes.Results.Any(x => x.Uid == indexName))
+        {
+            _logger.LogWarning($"Index {indexName} already exists, skipping creation of index.");
+            return;
+        }
+        _logger.LogTrace($"Creating index '{indexName}'...");
+        Client.CreateIndexAsync(indexName).Wait();
+        Task.Delay(5000).Wait();
+        var index = Client.GetIndexAsync(indexName).Result;
+        var test = index.GetFilterableAttributesAsync().Result;
+        index.UpdateFilterableAttributesAsync(FIELDS).Wait();
+        _logger.LogInformation($"{indexName} index created!");
+        
+        Client.GetIndexAsync("index_bindings").Result.AddDocumentsAsync(new List<Models.Index>
+        {
+            new Models.Index()
+            {
+                Name = indexName
+            }
+        }, "name").Wait();
+    }
+
+    /// <summary>
+    /// Deletes a index for a repoistory.
+    /// </summary>
+    /// <param name="indexName">The name of the index.</param>
+    public void DeleteIndex(string indexName)
+    {
+        var indexes = Client.GetAllIndexesAsync().Result;
+        if (indexes.Results.Any(x => x.Uid != indexName))
+        {
+            _logger.LogWarning($"Index '{indexName}' does not exist, skipping deletion of index.");
+            return;
+        }
+        _logger.LogTrace($"Deleting index '{indexName}'...");
+        Client.DeleteIndexAsync(indexName).Wait();
+        Client.GetIndexAsync("index_bindings").Result.DeleteOneDocumentAsync(indexName).Wait();
+        _logger.LogInformation($"Deleted index '{indexName}'!");
+    }
+    
+    public void AddDocument(string repositoryId, IDocument document)
+    {
+        _logger.LogTrace($"Adding document '{document.Id}' to repository '{repositoryId}'...");
+        _documentCollection.Add(new KeyValuePair<string, IDocument>(repositoryId, document));
+        _logger.LogInformation($"Document {document.Id} added to collection.");
+    }
+
+    public List<string> GetAllIndexes()
+    {
+        _logger.LogTrace("Fetching all indexes from Meilisearch server created with the SDK...");
+        var result = Client.GetAllIndexesAsync().Result.Results.Select(x => x.Uid).Where(x=>x!="index_bindings").ToList();
+        _logger.LogInformation($"Fetched {result.Count} indexes from Meilisearch server.");
+        return  result;
+    }
+
+    public async void Start()
+    {
+        await StartMeilisearch();
+    }
+
+    public async void Stop()
+    {
+        process.Kill();
+    }
+    
+    public void Dispose()
+    {
+        CheckIfNeedDocumentSync();
         Stop();
-        Start();
+        _httpClient.Dispose();
     }
-
-    public void Stop()
-    {
-        if (_process == null)
-        {
-            _logger.LogWarning("Attempted to stop MeiliSearch process, but it is not running.");
-            throw new Exception("Meilisearch process is not running.");
-        }
-
-        _logger.LogInformation("Stopping MeiliSearch process.");
-        Status = MeiliSearchStatus.Stopping;
-
-        try
-        {
-            _process.Kill();
-            Status = MeiliSearchStatus.Stopped;
-            _logger.LogInformation("MeiliSearch process stopped successfully.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to stop MeiliSearch process.");
-            throw;
-        }
-    }
-
-    public List<string> ListIndexs()
-    {
-        throw new NotImplementedException();
-    }
-
-    public Index CreateIndex()
-    {
-        throw new NotImplementedException();
-    }
-
-    public void LoadIndex(string indexId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void UnloadIndex(string indexId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void DeleteIndex(string indexId)
-    {
-        throw new NotImplementedException();
-    }
+    #endregion
 }
