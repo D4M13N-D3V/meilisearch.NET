@@ -2,8 +2,11 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security;
+using System.Security.Cryptography;
+using System.Text;
 using Meilisearch;
 using meilisearch.NET.Configurations;
 using meilisearch.NET.Enums;
@@ -19,31 +22,20 @@ public class MeilisearchService:IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<MeilisearchService> _logger;
-    public readonly MeilisearchClient Client;
+    private readonly MeilisearchClient _client;
     private readonly MeiliSearchConfiguration _meiliConfiguration;
+    private readonly string _indexBasePath = Path.Combine(AppContext.BaseDirectory, "db", "indexes" );
+    private static string _apiKey = GenerateApiKey();
+    private const int THRESHOLD = 10000;
     private Process process;
     private ObservableCollection<KeyValuePair<string,IDocument>> _documentCollection;
-    private const int THRESHOLD = 10000;
-    private readonly List<string> FIELDS = new List<string>
-    {
-        "id",
-        "path",
-        "createdAtUtc",
-        "updatedAtUtc",
-        "lastAccessedAtUtc",
-        "name",
-        "type",
-        "ext",
-        "size"
-    };
-    private readonly string _indexBasePath = Path.Combine(AppContext.BaseDirectory, "db", "indexes" );
 
     public MeilisearchService(HttpClient httpClient, ILogger<MeilisearchService> logger, MeiliSearchConfiguration meiliConfiguration)
     {
         _httpClient = httpClient;
         _meiliConfiguration = meiliConfiguration;
         _logger = logger;
-        Client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort );
+        _client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort, _apiKey );
         _documentCollection = new ObservableCollection<KeyValuePair<string,IDocument>>();
         _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
         StartMeilisearch().Wait();
@@ -53,17 +45,40 @@ public class MeilisearchService:IDisposable
 
     
     #region Private
+    private static string GenerateApiKey(int length = 64)
+    {
+        if (length <= 0)
+        {
+            throw new ArgumentException("Length must be greater than zero.", nameof(length));
+        }
+
+        const string allowedChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        var apiKey = new StringBuilder();
+        var randomBytes = new byte[length];
+
+        using (var rng = RandomNumberGenerator.Create())
+        {
+            rng.GetBytes(randomBytes);
+        }
+
+        foreach (var randomByte in randomBytes)
+        {
+            apiKey.Append(allowedChars[randomByte % allowedChars.Length]);
+        }
+
+        return apiKey.ToString();
+    }
     private async Task EnsureRepositoryIndexExists()
     {
         Task.Delay(5000).Wait();
-        var indexes = Client.GetAllIndexesAsync().Result;
+        var indexes = _client.GetAllIndexesAsync().Result;
         if (indexes.Results.Any(x => x.Uid == "index_bindings"))
         {
             _logger.LogInformation("index bindings already exists, skipping creation of index.");
             return;
         }
         _logger.LogInformation("Creating index bindings for SDK to track indexs...");
-        Client.CreateIndexAsync("index_bindings").Wait();
+        _client.CreateIndexAsync("index_bindings").Wait();
     }
     
     private string GetMeilisearchBinaryName()
@@ -88,14 +103,6 @@ public class MeilisearchService:IDisposable
         }
 
         throw new PlatformNotSupportedException("Current platform and architecture combination is not supported");
-    }
-
-    private void EnsureMeilisearchIsRunning()
-    {
-        if (!IsMeilisearchRunning())
-        {
-            StartMeilisearch().Wait();
-        }
     }
 
     private async Task StartMeilisearch()
@@ -127,7 +134,8 @@ public class MeilisearchService:IDisposable
             : "127.0.0.1";
         var args = "--http-addr "+host+":" + _meiliConfiguration.MeiliPort 
                   + " --env development --db-path " 
-                  + Path.Combine(AppContext.BaseDirectory, "db");
+                  + Path.Combine(AppContext.BaseDirectory, "db")
+                  + " --master-key " + _apiKey;
 
         var processStartInfo = new ProcessStartInfo
         {
@@ -136,11 +144,20 @@ public class MeilisearchService:IDisposable
             UseShellExecute = false,
             RedirectStandardOutput = false,
             RedirectStandardError = false,
-            CreateNoWindow = false
+            CreateNoWindow = false,
         };
 
-        process = new Process { StartInfo = processStartInfo };
-        
+        process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true};
+        process.Exited += (sender, e) =>
+        {
+            _logger.LogWarning("Meilisearch process has exited. Restarting...");
+            _ = StartMeilisearch(); // Restart the process
+        };
+        process.Disposed += (sender, eventArgs) => 
+        {
+            _logger.LogWarning("Meilisearch process has exited. Restarting...");
+            _ = StartMeilisearch(); // Restart the process
+        };
         try
         {
             process.Start();
@@ -169,7 +186,7 @@ public class MeilisearchService:IDisposable
                 .ToDictionary(group => group.Key, group => group.Select(pair => pair.Value).ToList());
             foreach (var repository in grouped)
             {
-                var repositoryIndex = Client.GetIndexAsync(repository.Key).Result;
+                var repositoryIndex = _client.GetIndexAsync(repository.Key).Result;
                 var documents = _documentCollection.ToList();
                 _documentCollection.Clear();
                 var result = RetryAsync(() => repositoryIndex.AddDocumentsAsync(repository.Value, "id")).Result;
@@ -199,6 +216,23 @@ public class MeilisearchService:IDisposable
             }
         }
     }
+    public static string[] GetPropertiesInCamelCase<T>()
+    {
+        var properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        return properties
+            .Select(p => ToCamelCase(p.Name))
+            .ToArray();
+    }
+
+    private static string ToCamelCase(string input)
+    {
+        if (string.IsNullOrEmpty(input) || char.IsLower(input[0]))
+        {
+            return input;
+        }
+
+        return char.ToLowerInvariant(input[0]) + input.Substring(1);
+    }
     #endregion
     
     #region Public
@@ -211,9 +245,9 @@ public class MeilisearchService:IDisposable
         return processes.Any();
     }
 
-    public void CreateIndex(string indexName)
+    public void CreateIndex<T>(string indexName) where T : IDocument
     {
-        var indexes = Client.GetAllIndexesAsync().Result;
+        var indexes = _client.GetAllIndexesAsync().Result;
         if (indexes.Results.Any(x => x.Uid == indexName))
         {
             _logger.LogWarning($"Index {indexName} already exists, skipping creation of index.");
@@ -222,15 +256,15 @@ public class MeilisearchService:IDisposable
 
         var foldersBefore = Directory.GetDirectories(_indexBasePath);
         _logger.LogTrace($"Creating index '{indexName}'...");
-        Client.CreateIndexAsync(indexName).Wait();
+        _client.CreateIndexAsync(indexName).Wait();
         Task.Delay(5000).Wait();
-        var index = Client.GetIndexAsync(indexName).Result;
+        var index = _client.GetIndexAsync(indexName).Result;
         var test = index.GetFilterableAttributesAsync().Result;
-        index.UpdateFilterableAttributesAsync(FIELDS).Wait();
+        index.UpdateFilterableAttributesAsync(GetPropertiesInCamelCase<T>()).Wait();
         _logger.LogInformation($"{indexName} index created!");
         var foldersAfter = Directory.GetDirectories(_indexBasePath);
         var folder = Path.GetFileName(foldersAfter.Except(foldersBefore).FirstOrDefault());
-        Client.GetIndexAsync("index_bindings").Result.AddDocumentsAsync(new List<Models.Index>
+        _client.GetIndexAsync("index_bindings").Result.AddDocumentsAsync(new List<Models.Index>
         {
             new()
             {
@@ -243,15 +277,15 @@ public class MeilisearchService:IDisposable
 
     public void DeleteIndex(string indexName)
     {
-        var indexes = Client.GetAllIndexesAsync().Result;
+        var indexes = _client.GetAllIndexesAsync().Result;
         if (indexes.Results.Any(x => x.Uid == indexName)==false)
         {
             _logger.LogWarning($"Index '{indexName}' does not exist, skipping deletion of index.");
             return;
         }
         _logger.LogTrace($"Deleting index '{indexName}'...");
-        Client.DeleteIndexAsync(indexName).Wait();
-        Client.GetIndexAsync("index_bindings").Result.DeleteOneDocumentAsync(indexName).Wait();
+        _client.DeleteIndexAsync(indexName).Wait();
+        _client.GetIndexAsync("index_bindings").Result.DeleteOneDocumentAsync(indexName).Wait();
         _logger.LogInformation($"Deleted index '{indexName}'!");
     }
     
@@ -265,7 +299,7 @@ public class MeilisearchService:IDisposable
     public List<string> GetAllIndexes()
     {
         _logger.LogTrace("Fetching all indexes from Meilisearch server created with the SDK...");
-        var result = Client.GetAllIndexesAsync().Result.Results.Select(x => x.Uid).Where(x=>x!="index_bindings").ToList();
+        var result = _client.GetAllIndexesAsync().Result.Results.Select(x => x.Uid).Where(x=>x!="index_bindings").ToList();
         _logger.LogInformation($"Fetched {result.Count} indexes from Meilisearch server.");
         return  result;
     }
