@@ -23,6 +23,7 @@ MeiliSearch .NET Integration is a NuGet package that seamlessly embeds MeiliSear
 - [ ] **Future Index Management**: Upcoming feature to automatically compress and decompress indexes for optimized local storage.
 - [ ] **Caching Mechanism**: Cache the comrpessed indexes so they are returned when you ask for a list of all indexs.
 - [ ] **Search Capabilities**: Ability to use the meilisearch native search capabilities with the index being loaded validation.
+- [ ] **Embedded Ollama**: Intergated Ollama directly into your application with a configured model.
 - [ ] **AI Search Capabilities**: Ability to use the meilisearch native AI search capabilities with the index being loaded validation.
 
 ## Installation
