@@ -2,7 +2,8 @@
 
 ![Gitea Release](https://img.shields.io/gitea/v/release/damien/meilisearch.NET?gitea_url=https://git.d4m13n.dev)
 ![Dotnet 8](https://img.shields.io/badge/-.NET%208.0-blueviolet?logo=dotnet)
-![Static Badge](https://img.shields.io/badge/Meilisearch-FA8072)
+![Meilisearch](https://img.shields.io/badge/Meilisearch-FA8072)
+![Ollama](https://img.shields.io/badge/Ollama-Powered-orange)
 [![Gitea](https://img.shields.io/badge/Gitea-6eaa5b?logo=gitea&logoColor=fff)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
