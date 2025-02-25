@@ -170,6 +170,10 @@ Indicates the current status of the MeiliSearch process.
 MeiliSearchStatus status = service.Status;
 ```
 
+## Notes
+https://github.com/Mozilla-Ocho/llamafile
+
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
