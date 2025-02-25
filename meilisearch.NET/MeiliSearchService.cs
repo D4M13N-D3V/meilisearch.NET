@@ -45,21 +45,13 @@ public class MeilisearchService:IDisposable
         Client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort );
         _documentCollection = new ObservableCollection<KeyValuePair<string,IDocument>>();
         _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
-        Initialize();
+        StartMeilisearch();
     }
     
 
     
     #region Private
-
-    private async void Initialize()
-    {
-        await StartMeilisearch();
-        EnsureMeilisearchIsRunning();
-        EnsureRepositoryIndexExists();
-    }
-    
-    private async void EnsureRepositoryIndexExists()
+    private async Task EnsureRepositoryIndexExists()
     {
         Task.Delay(5000).Wait();
         var indexes = Client.GetAllIndexesAsync().Result;
@@ -149,9 +141,9 @@ public class MeilisearchService:IDisposable
             FileName = binaryPath,
             Arguments = args,
             UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
+            CreateNoWindow = false
         };
 
         process = new Process { StartInfo = processStartInfo };
