@@ -1,7 +1,8 @@
-
 # MeiliSearch .NET Embedded
 
-[![NuGet Version](https://img.shields.io/nuget/v/D4M13N-D3V/meilisearch.NET.svg)](https://nuget.pkg.github.com/D4M13N-D3V/package/meilisearch.NET)
+![Gitea Release](https://img.shields.io/gitea/v/release/damien/meilisearch.NET?gitea_url=https://git.d4m13n.dev)
+![Dotnet 8](https://img.shields.io/badge/-.NET%208.0-blueviolet?logo=dotnet)
+[![Gitea](https://img.shields.io/badge/Gitea-6eaa5b?logo=gitea&logoColor=fff)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview

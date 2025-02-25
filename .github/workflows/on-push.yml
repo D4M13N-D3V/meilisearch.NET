@@ -1,8 +1,10 @@
 name: build-packages
+
 on:
   push:
     branches: 
       - 'master'
+
 jobs:
   meilisearch-dotnet-packages:
     runs-on: ubuntu-latest
@@ -11,56 +13,61 @@ jobs:
     permissions:
       contents: write
       packages: write
+
     steps:
-      - name: 'Cleanup build folder'
+      - name: Cleanup build folder
         run: |
-          rm ./* -r || true
-          rm ./.??* -r  || true
-          
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          
-      - uses: gittools/actions/gitversion/setup@v1.1.1
-        with:
-          versionSpec: '5.x'
-      - uses: gittools/actions/gitversion/execute@v1.1.1
-        with:
-          useConfigFile: true
-          configFilePath: GitVersion.yml
-      - name: Tag branch
-        run: |
-          git tag $GitVersion_SemVer
-          git push origin $GitVersion_SemVer
-        
-      - uses: actions/setup-dotnet@v3
+          rm -rf ./* ./.??* || true
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: 8.0.x
 
-      - name: Authorise NuGet
-        uses: StirlingLabs/GithubNugetAuthAction@main
+      - name: Checkout repository
+        uses: actions/checkout@v3
         with:
-          owner: data443
-          name: Data443
-          token: ${{secrets.GITHUB_TOKEN}}
+          fetch-depth: 0
 
-      - name: Set up GitVersion
-        uses: gittools/actions/gitversion/setup@v0.9.15
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1.1.1
         with:
           versionSpec: '5.x'
-    
-      - uses: gittools/actions/gitversion/execute@v0.9.15
+
+      - name: Determine version with GitVersion
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v1.1.1
         with:
           useConfigFile: true
           configFilePath: GitVersion.yml
 
-      - name: Set Package Version
+      - name: Tag repository
+        run: |
+          git tag ${{ steps.gitversion.outputs.SemVer }}
+          git push origin ${{ steps.gitversion.outputs.SemVer }}
+
+      - name: Update package version
         uses: vers-one/dotnet-project-version-updater@v1.6
         with:
           file: "./meilisearch.NET/meilisearch.NET.csproj"
-          version: ${{ env.GitVersion_SemVer }}
+          version: ${{ steps.gitversion.outputs.SemVer }}
 
-      - run: dotnet build --configuration Release
-      - run: dotnet pack ./meilisearch.NET/meilisearch.NET.csproj --output nuget-packages --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
-      - run: dotnet nuget push **/*.nupkg --skip-duplicate -s "https://nuget.pkg.github.com/D4M13N-D3V/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
-      - run: dotnet nuget remove source Data443
+      - name: Build and package
+        run: |
+          dotnet build --configuration Release
+          dotnet pack ./meilisearch.NET/meilisearch.NET.csproj --output nuget-packages --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+
+      - name: Publish package to NuGet registry
+        run: |
+          dotnet nuget push nuget-packages/*.nupkg --skip-duplicate -s "https://git.d4m13n.dev/api/packages/damien/nuget/index.json" --api-key ${{ secrets.PACKAGE_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.gitversion.outputs.SemVer }}
+          name: Release ${{ steps.gitversion.outputs.SemVer }}
+          body: "https://git.d4m13n.dev/damien/meilisearch.NET/packages 
+          Automated release of MeiliSearch.NET version ${{ steps.gitversion.outputs.SemVer }}."
+          files: nuget-packages/*.nupkg
+          draft: false
+          prerelease: false
