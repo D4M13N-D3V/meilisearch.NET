@@ -36,6 +36,7 @@ public class MeilisearchService:IDisposable
         "ext",
         "size"
     };
+    private readonly string _indexBasePath = Path.Combine(AppContext.BaseDirectory, "db", "indexes" );
 
     public MeilisearchService(HttpClient httpClient, ILogger<MeilisearchService> logger, MeiliSearchConfiguration meiliConfiguration)
     {
@@ -45,7 +46,8 @@ public class MeilisearchService:IDisposable
         Client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort );
         _documentCollection = new ObservableCollection<KeyValuePair<string,IDocument>>();
         _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
-        StartMeilisearch();
+        StartMeilisearch().Wait();
+        EnsureRepositoryIndexExists().Wait();
     }
     
 
@@ -94,15 +96,6 @@ public class MeilisearchService:IDisposable
         {
             StartMeilisearch().Wait();
         }
-    }
-
-    private bool IsMeilisearchRunning()
-    {
-        var processName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) 
-            ? "meilisearch-windows" 
-            : "meilisearch";
-        var processes = Process.GetProcessesByName(processName);
-        return processes.Any();
     }
 
     private async Task StartMeilisearch()
@@ -209,10 +202,15 @@ public class MeilisearchService:IDisposable
     #endregion
     
     #region Public
-    /// <summary>
-    /// Creates a new index on the Meilisearch server if it does not already exist.
-    /// </summary>
-    /// <param name="indexName">The name for the new index.</param>
+    public bool IsMeilisearchRunning()
+    {
+        var processName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) 
+            ? "meilisearch-windows" 
+            : "meilisearch";
+        var processes = Process.GetProcessesByName(processName);
+        return processes.Any();
+    }
+
     public void CreateIndex(string indexName)
     {
         var indexes = Client.GetAllIndexesAsync().Result;
@@ -221,6 +219,8 @@ public class MeilisearchService:IDisposable
             _logger.LogWarning($"Index {indexName} already exists, skipping creation of index.");
             return;
         }
+
+        var foldersBefore = Directory.GetDirectories(_indexBasePath);
         _logger.LogTrace($"Creating index '{indexName}'...");
         Client.CreateIndexAsync(indexName).Wait();
         Task.Delay(5000).Wait();
@@ -228,24 +228,23 @@ public class MeilisearchService:IDisposable
         var test = index.GetFilterableAttributesAsync().Result;
         index.UpdateFilterableAttributesAsync(FIELDS).Wait();
         _logger.LogInformation($"{indexName} index created!");
-        
+        var foldersAfter = Directory.GetDirectories(_indexBasePath);
+        var folder = Path.GetFileName(foldersAfter.Except(foldersBefore).FirstOrDefault());
         Client.GetIndexAsync("index_bindings").Result.AddDocumentsAsync(new List<Models.Index>
         {
-            new Models.Index()
+            new()
             {
-                Name = indexName
+                Name = indexName,
+                CreatedAt = DateTime.UtcNow,
+                FolderId = folder
             }
         }, "name").Wait();
     }
 
-    /// <summary>
-    /// Deletes a index for a repoistory.
-    /// </summary>
-    /// <param name="indexName">The name of the index.</param>
     public void DeleteIndex(string indexName)
     {
         var indexes = Client.GetAllIndexesAsync().Result;
-        if (indexes.Results.Any(x => x.Uid != indexName))
+        if (indexes.Results.Any(x => x.Uid == indexName)==false)
         {
             _logger.LogWarning($"Index '{indexName}' does not exist, skipping deletion of index.");
             return;

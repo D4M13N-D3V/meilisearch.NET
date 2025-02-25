@@ -13,29 +13,19 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        // Set security protocol to SystemDefault
         ServicePointManager.SecurityProtocol = SecurityProtocolType.SystemDefault;
-
-        // Configure and build the host
         IHost host = CreateHostBuilder(args).Build();
-
-        //Resolve test dependency
         var testService = host.Services.GetService<test>();
-
-        // Run the host
         await host.RunAsync();
-        
     }
-
-    
     
     public static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
             .ConfigureAppConfiguration((hostingContext, configuration) =>
             {
                 configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                configuration.AddEnvironmentVariables(); // Add environment variables as well (optional, but good practice)
-                configuration.AddCommandLine(args); // Support command line arguments
+                configuration.AddEnvironmentVariables(); 
+                configuration.AddCommandLine(args); 
             })
             .ConfigureServices((hostContext, services) =>
             {
@@ -52,7 +42,7 @@ public class Program
              })
             .UseConsoleLifetime(options =>
             {
-                options.SuppressStatusMessages = true;  // This is optional: you can suppress the "Application started" message
+                options.SuppressStatusMessages = true; 
             });
 }
 
@@ -62,10 +52,16 @@ public class test
 
     public test(MeilisearchService service, ILogger<test> logger)
     {
-        
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        // You can perform actions with the Meilisearch service here
+        // Wait until Meilisearch is running
+        while (!service.IsMeilisearchRunning())
+        {
+            _logger.LogInformation("Waiting for Meilisearch to start...");
+            Task.Delay(1000).Wait(); // Wait for 1 second before checking again
+        }
+
+        service.CreateIndex("test");
         _logger.LogInformation("Test service initialized.");
     }
 }
