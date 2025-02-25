@@ -3,6 +3,7 @@ using System.Net;
 using System.Threading.Tasks;
 using meilisearch.NET;
 using meilisearch.NET.Configurations;
+using meilisearch.NET.example;
 using meilisearch.NET.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -61,7 +62,42 @@ public class test
             Task.Delay(1000).Wait(); // Wait for 1 second before checking again
         }
 
-        service.CreateIndex("test");
+        service.CreateIndex<document>("test");
+        service.AddDocument("test", new document()
+        {
+            Id = Guid.NewGuid(),
+            message = "Hello, Meilisearch!"
+        });
+        service.AddDocument("test", new document()
+        {
+            Id = Guid.NewGuid(),
+            message = "Hello, Meilisearch!"
+        });
+        service.AddDocument("test", new document()
+        {
+            Id = Guid.NewGuid(),
+            message = "Hello, Meilisearch!"
+        });
+        service.AddDocument("test", new document()
+        {
+            Id = Guid.NewGuid(),
+            message = "Hello, Meilisearch!"
+        });
+        service.AddDocument("test", new document()
+        {
+            Id = Guid.NewGuid(),
+            message = "Hello, Meilisearch!"
+        });
+        service.AddDocument("test", new document()
+        {
+            Id = Guid.NewGuid(),
+            message = "Hello, Meilisearch!"
+        });
+        service.AddDocument("test", new document()
+        {
+            Id = Guid.NewGuid(),
+            message = "Hello, Meilisearch!"
+        });
         _logger.LogInformation("Test service initialized.");
     }
 }

@@ -40,6 +40,7 @@ public class MeilisearchService:IDisposable
         _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
         StartMeilisearch().Wait();
         EnsureRepositoryIndexExists().Wait();
+        _logger.LogTrace("API Key: " + _apiKey);
     }
     
 
