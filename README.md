@@ -11,22 +11,23 @@ MeiliSearch .NET Integration is a NuGet package that seamlessly embeds MeiliSear
 ## Features
 
 - [x] **Embedded MeiliSearch**: Integrate MeiliSearch directly into your application.
+- [x] **Manage Indexes**: Manage your indexs and documents through the SDK, you can still use the default Meilisearch SDK.
 - [x] **Background Process Management**: Automatically handles the lifecycle of the MeiliSearch process.
-- [x] **Health Monitoring**: Regular checks on the health of the MeiliSearch instance.
-- [x] **API Key Management**: An API key is automatically regenerated every time the MeiliSearch service starts unless one is specified in the configuration.
+- [ ] **Health Monitoring**: Regular checks on the health of the MeiliSearch instance.
+- [ ] **API Key Management**: An API key is automatically regenerated every time the MeiliSearch service starts unless one is specified in the configuration.
 - [ ] **Resource Monitoring**: Monitor the resources being used including storage by your MeiliSearch.
 - [ ] **Future Index Management**: Upcoming feature to automatically compress and decompress indexes for optimized local storage.
 
 ## Installation
 
-To add the MeiliSearch .NET Integration package to your project, you can install it directly from the GitHub Package repository. Follow the steps below based on your preferred method:
+To add the MeiliSearch .NET Integration package to your project, you can install it directly from NuGet. Follow the steps below based on your preferred method:
 
 ### Package Manager Console
 
 Open the Package Manager Console in Visual Studio and run the following command:
 
 ```bash
-Install-Package D4M13N-D3V/meilisearch.NET
+Install-Package meilisearch.NET
 ```
 
 ### .NET CLI
@@ -34,34 +35,34 @@ Install-Package D4M13N-D3V/meilisearch.NET
 If you're using the .NET CLI, run the following command in your terminal:
 
 ```bash
-dotnet add package D4M13N-D3V/meilisearch.NET
+dotnet add package meilisearch.NET
 ```
-
-### Configure NuGet
-
-To install the package, ensure your project is configured to use GitHub Packages as a NuGet source. You can do this by adding the following to your `nuget.config` file:
-
-```xml
-<configuration>
-  <packageSources>
-    <add key="GitHub" value="https://nuget.pkg.github.com/D4M13N-D3V/index.json" />
-  </packageSources>
-  <packageSourceCredentials>
-    <GitHub>
-      <add key="Username" value="YOUR_GITHUB_USERNAME" />
-      <add key="ClearTextPassword" value="YOUR_GITHUB_TOKEN" />
-    </GitHub>
-  </packageSourceCredentials>
-</configuration>
-```
-
-Make sure to replace `YOUR_GITHUB_USERNAME` with your GitHub username and `YOUR_GITHUB_TOKEN` with a personal access token that has read access to packages.
 
 ## AppSettings Options
 
 - **Port**: The port on which MeiliSearch will run (default is `7700`).
 - **UiEnabled**: A boolean value to enable or disable the MeiliSearch UI (default is `true`).
 - **ApiKey**: An optional API key. If specified, this key will be used; otherwise, a new key will be generated each time the service starts.
+
+## Configuration
+
+The MeiliSearch service can be configured using the `MeiliSearchConfiguration` class. The following options are available:
+
+- **Port**: The port on which MeiliSearch will run (default is `7700`).
+- **UiEnabled**: A boolean value to enable or disable the MeiliSearch UI (default is `true`).
+- **ApiKey**: An optional API key. If specified, this key will be used; otherwise, a new key will be generated each time the service starts.
+
+You can configure these options in your `appsettings.json` file as follows:
+
+```json
+{
+  "MeiliSearch": {
+    "Port": 7700,
+    "UiEnabled": true,
+    "ApiKey": "your_api_key"
+  }
+}
+```
 
 ## Usage
 
@@ -114,6 +115,45 @@ Restarts the MeiliSearch process. Stops the process using the **Stop** method an
 
 ```csharp
 service.Restart();
+```
+
+#### CreateIndex
+
+Creates a new index with the specified name.
+
+```csharp
+service.CreateIndex("my_index");
+```
+
+#### DeleteIndex
+
+Deletes an existing index with the specified name.
+
+```csharp
+service.DeleteIndex("my_index");
+```
+
+#### AddDocument
+
+Adds a document to the specified index.
+
+```csharp
+public class MyDocument : IDocument
+{
+    public string Id { get; set; }
+    public string Title { get; set; }
+}
+
+var document = new MyDocument { Id = "1", Title = "My Document" };
+service.AddDocument("my_index", document);
+```
+
+#### GetAllIndexes
+
+Retrieves a list of all existing indexes.
+
+```csharp
+List<string> indexes = service.GetAllIndexes();
 ```
 
 ### Status
