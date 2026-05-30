@@ -59,11 +59,11 @@ public class TestWorker : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await _service.CreateIndexAsync<document>("test");
+        await _service.CreateIndexAsync<Document>("test");
 
         for (var i = 0; i < 7; i++)
         {
-            _service.AddDocument("test", new document
+            _service.AddDocument("test", new Document
             {
                 Id = Guid.NewGuid(),
                 message = "Hello, Meilisearch!"
