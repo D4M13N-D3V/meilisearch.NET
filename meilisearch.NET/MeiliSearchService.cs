@@ -23,7 +23,6 @@ public class MeilisearchService:IDisposable
     private readonly ILogger<MeilisearchService> _logger;
     private readonly MeilisearchClient _client;
     private readonly MeiliSearchConfiguration _meiliConfiguration;
-    private readonly string _indexBasePath = Path.Combine(AppContext.BaseDirectory, "db", "indexes" );
     private readonly string _apiKey;
     private const int THRESHOLD = 10000;
     private Process? process;
@@ -373,23 +372,18 @@ public class MeilisearchService:IDisposable
             return;
         }
 
-        var foldersBefore = Directory.GetDirectories(_indexBasePath);
         _logger.LogTrace($"Creating index '{indexName}'...");
         _client.CreateIndexAsync(indexName).Wait();
         Task.Delay(5000).Wait();
         var index = _client.GetIndexAsync(indexName).Result;
-        var test = index.GetFilterableAttributesAsync().Result;
         index.UpdateFilterableAttributesAsync(GetPropertiesInCamelCase<T>()).Wait();
         _logger.LogInformation($"{indexName} index created!");
-        var foldersAfter = Directory.GetDirectories(_indexBasePath);
-        var folder = Path.GetFileName(foldersAfter.Except(foldersBefore).FirstOrDefault());
         _client.GetIndexAsync("index_bindings").Result.AddDocumentsAsync(new List<Models.Index>
         {
             new()
             {
                 Name = indexName,
-                CreatedAt = DateTime.UtcNow,
-                FolderId = folder
+                CreatedAt = DateTime.UtcNow
             }
         }, "name").Wait();
     }
