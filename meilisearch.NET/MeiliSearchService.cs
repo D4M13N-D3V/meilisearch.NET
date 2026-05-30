@@ -5,8 +5,6 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security;
-using System.Security.Cryptography;
-using System.Text;
 using Meilisearch;
 using meilisearch.NET.Configurations;
 using meilisearch.NET.Enums;
@@ -25,7 +23,7 @@ public class MeilisearchService:IDisposable
     private readonly MeilisearchClient _client;
     private readonly MeiliSearchConfiguration _meiliConfiguration;
     private readonly string _indexBasePath = Path.Combine(AppContext.BaseDirectory, "db", "indexes" );
-    private static string _apiKey = GenerateApiKey();
+    private readonly string _apiKey;
     private const int THRESHOLD = 10000;
     private Process process;
     private ObservableCollection<KeyValuePair<string,IDocument>> _documentCollection;
@@ -35,6 +33,7 @@ public class MeilisearchService:IDisposable
         _httpClient = httpClient;
         _meiliConfiguration = meiliConfiguration;
         _logger = logger;
+        _apiKey = ResolveApiKey(meiliConfiguration);
         _client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort, _apiKey );
         _documentCollection = new ObservableCollection<KeyValuePair<string,IDocument>>();
         _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
@@ -46,28 +45,23 @@ public class MeilisearchService:IDisposable
 
     
     #region Private
-    private static string GenerateApiKey(int length = 64)
+    private string ResolveApiKey(MeiliSearchConfiguration configuration)
     {
-        if (length <= 0)
+        if (configuration.EnableCustomApiKey)
         {
-            throw new ArgumentException("Length must be greater than zero.", nameof(length));
+            if (string.IsNullOrWhiteSpace(configuration.ApiKey))
+            {
+                throw new InvalidOperationException(
+                    "Meili:CustomApiKey is enabled but Meili:ApiKey is empty. " +
+                    "Provide a key or disable Meili:CustomApiKey to auto-generate one.");
+            }
+
+            _logger.LogInformation("Using configured Meilisearch master key.");
+            return configuration.ApiKey;
         }
 
-        const string allowedChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-        var apiKey = new StringBuilder();
-        var randomBytes = new byte[length];
-
-        using (var rng = RandomNumberGenerator.Create())
-        {
-            rng.GetBytes(randomBytes);
-        }
-
-        foreach (var randomByte in randomBytes)
-        {
-            apiKey.Append(allowedChars[randomByte % allowedChars.Length]);
-        }
-
-        return apiKey.ToString();
+        _logger.LogInformation("Generating a new Meilisearch master key.");
+        return ApiKeyGenerator.GenerateApiKey();
     }
     private async Task EnsureRepositoryIndexExists()
     {
