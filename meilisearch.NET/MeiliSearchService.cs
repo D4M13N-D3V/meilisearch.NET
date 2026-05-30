@@ -11,13 +11,14 @@ using meilisearch.NET.Configurations;
 using meilisearch.NET.Enums;
 using meilisearch.NET.Extensions;
 using meilisearch.NET.Interfaces;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Index = Meilisearch.Index;
 
 namespace meilisearch.NET;
 
 
-public class MeilisearchService:IDisposable
+public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<MeilisearchService> _logger;
@@ -41,9 +42,23 @@ public class MeilisearchService:IDisposable
         _apiKey = ResolveApiKey(meiliConfiguration);
         _client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort, _apiKey );
         _documentCollection = new ObservableCollection<KeyValuePair<string,IDocument>>();
-        _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
-        StartMeilisearch().Wait();
-        EnsureRepositoryIndexExists().Wait();
+        _documentCollection.CollectionChanged += OnDocumentCollectionChanged;
+        // Startup is deferred to StartAsync (IHostedService) so the constructor
+        // never blocks on async work during DI resolution.
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        _stopping = false;
+        await StartMeilisearch();
+        await EnsureRepositoryIndexExists();
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Flush any queued documents while the server is still up, then stop it.
+        await FlushDocumentsAsync();
+        Stop();
     }
     
 
@@ -69,15 +84,15 @@ public class MeilisearchService:IDisposable
     }
     private async Task EnsureRepositoryIndexExists()
     {
-        Task.Delay(5000).Wait();
-        var indexes = _client.GetAllIndexesAsync().Result;
+        await Task.Delay(5000);
+        var indexes = await _client.GetAllIndexesAsync();
         if (indexes.Results.Any(x => x.Uid == "index_bindings"))
         {
             _logger.LogInformation("index bindings already exists, skipping creation of index.");
             return;
         }
         _logger.LogInformation("Creating index bindings for SDK to track indexs...");
-        _client.CreateIndexAsync("index_bindings").Wait();
+        await _client.CreateIndexAsync("index_bindings");
     }
     
     private string GetMeilisearchBinaryName()
@@ -263,52 +278,66 @@ public class MeilisearchService:IDisposable
         }
     }
     
-    private void CheckIfNeedDocumentSync(object? sender, NotifyCollectionChangedEventArgs e)
+    private async void OnDocumentCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        CheckIfNeedDocumentSync(THRESHOLD);
+        try
+        {
+            await SyncDocumentsAsync(THRESHOLD);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Document sync failed: {ex.Message}");
+        }
     }
 
-    private void CheckIfNeedDocumentSync(int? threshold = null)
-    {
-        var effectiveThreshold = threshold ?? 0;
+    // Flushes everything currently queued, regardless of threshold.
+    private Task FlushDocumentsAsync() => SyncDocumentsAsync(0);
 
+    private async Task SyncDocumentsAsync(int threshold)
+    {
+        List<KeyValuePair<string, IDocument>> snapshot;
+
+        // Take the snapshot under the lock (no await inside the lock), then do
+        // the network push outside it. _syncing guards against re-entrancy: the
+        // CollectionChanged raised while removing synced items calls back here.
         lock (_syncLock)
         {
-            // _syncing guards against re-entrancy: removing synced items below
-            // raises CollectionChanged, which calls back into this method.
-            if (_syncing || _documentCollection.Count < effectiveThreshold)
+            if (_syncing || _documentCollection.Count < threshold)
             {
                 return;
             }
 
             _syncing = true;
-            try
+            snapshot = _documentCollection.ToList();
+        }
+
+        try
+        {
+            _logger.LogInformation("Threshold reached, syncing metadata to server.");
+
+            var grouped = snapshot
+                .GroupBy(pair => pair.Key)
+                .ToDictionary(group => group.Key, group => group.Select(pair => pair.Value).ToList());
+
+            // Push before removing, so a failed sync leaves documents queued and
+            // documents added during the push are preserved.
+            foreach (var repository in grouped)
             {
-                _logger.LogInformation("Threshold reached, syncing metadata to server.");
+                var repositoryIndex = await _client.GetIndexAsync(repository.Key);
+                await RetryAsync(() => repositoryIndex.AddDocumentsAsync(repository.Value, "id"));
+            }
 
-                // Snapshot what we sync so documents added during the push are
-                // preserved, and only remove items after a successful push (no
-                // data loss if the server call fails).
-                var snapshot = _documentCollection.ToList();
-                var grouped = snapshot
-                    .GroupBy(pair => pair.Key)
-                    .ToDictionary(group => group.Key, group => group.Select(pair => pair.Value).ToList());
-
-                foreach (var repository in grouped)
-                {
-                    var repositoryIndex = _client.GetIndexAsync(repository.Key).Result;
-                    RetryAsync(() => repositoryIndex.AddDocumentsAsync(repository.Value, "id")).Wait();
-                }
-
+            lock (_syncLock)
+            {
                 foreach (var item in snapshot)
                 {
                     _documentCollection.Remove(item);
                 }
             }
-            finally
-            {
-                _syncing = false;
-            }
+        }
+        finally
+        {
+            _syncing = false;
         }
     }
     
@@ -363,9 +392,9 @@ public class MeilisearchService:IDisposable
         return processes.Any();
     }
 
-    public void CreateIndex<T>(string indexName) where T : IDocument
+    public async Task CreateIndexAsync<T>(string indexName) where T : IDocument
     {
-        var indexes = _client.GetAllIndexesAsync().Result;
+        var indexes = await _client.GetAllIndexesAsync();
         if (indexes.Results.Any(x => x.Uid == indexName))
         {
             _logger.LogWarning($"Index {indexName} already exists, skipping creation of index.");
@@ -373,32 +402,34 @@ public class MeilisearchService:IDisposable
         }
 
         _logger.LogTrace($"Creating index '{indexName}'...");
-        _client.CreateIndexAsync(indexName).Wait();
-        Task.Delay(5000).Wait();
-        var index = _client.GetIndexAsync(indexName).Result;
-        index.UpdateFilterableAttributesAsync(GetPropertiesInCamelCase<T>()).Wait();
+        await _client.CreateIndexAsync(indexName);
+        await Task.Delay(5000);
+        var index = await _client.GetIndexAsync(indexName);
+        await index.UpdateFilterableAttributesAsync(GetPropertiesInCamelCase<T>());
         _logger.LogInformation($"{indexName} index created!");
-        _client.GetIndexAsync("index_bindings").Result.AddDocumentsAsync(new List<Models.Index>
+        var bindings = await _client.GetIndexAsync("index_bindings");
+        await bindings.AddDocumentsAsync(new List<Models.Index>
         {
             new()
             {
                 Name = indexName,
                 CreatedAt = DateTime.UtcNow
             }
-        }, "name").Wait();
+        }, "name");
     }
 
-    public void DeleteIndex(string indexName)
+    public async Task DeleteIndexAsync(string indexName)
     {
-        var indexes = _client.GetAllIndexesAsync().Result;
+        var indexes = await _client.GetAllIndexesAsync();
         if (indexes.Results.Any(x => x.Uid == indexName)==false)
         {
             _logger.LogWarning($"Index '{indexName}' does not exist, skipping deletion of index.");
             return;
         }
         _logger.LogTrace($"Deleting index '{indexName}'...");
-        _client.DeleteIndexAsync(indexName).Wait();
-        _client.GetIndexAsync("index_bindings").Result.DeleteOneDocumentAsync(indexName).Wait();
+        await _client.DeleteIndexAsync(indexName);
+        var bindings = await _client.GetIndexAsync("index_bindings");
+        await bindings.DeleteOneDocumentAsync(indexName);
         _logger.LogInformation($"Deleted index '{indexName}'!");
     }
     
@@ -412,18 +443,13 @@ public class MeilisearchService:IDisposable
         _logger.LogInformation($"Document {document.Id} added to collection.");
     }
 
-    public List<string> GetAllIndexes()
+    public async Task<List<string>> GetAllIndexesAsync()
     {
         _logger.LogTrace("Fetching all indexes from Meilisearch server created with the SDK...");
-        var result = _client.GetAllIndexesAsync().Result.Results.Select(x => x.Uid).Where(x=>x!="index_bindings").ToList();
+        var indexes = await _client.GetAllIndexesAsync();
+        var result = indexes.Results.Select(x => x.Uid).Where(x => x != "index_bindings").ToList();
         _logger.LogInformation($"Fetched {result.Count} indexes from Meilisearch server.");
-        return  result;
-    }
-
-    public Task Start()
-    {
-        _stopping = false;
-        return StartMeilisearch();
+        return result;
     }
 
     public void Stop()
@@ -446,7 +472,38 @@ public class MeilisearchService:IDisposable
         }
     }
 
+    // Preferred disposal path: flushes any queued documents before releasing
+    // resources. The generic host disposes IAsyncDisposable singletons via this.
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await FlushDocumentsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Failed to flush documents during disposal: {ex.Message}");
+        }
+
+        ReleaseResources();
+        GC.SuppressFinalize(this);
+    }
+
+    // Synchronous disposal releases resources but does not flush queued
+    // documents (that requires async I/O). Graceful flush happens in StopAsync
+    // for hosted usage, or use DisposeAsync.
     public void Dispose()
+    {
+        ReleaseResources();
+        GC.SuppressFinalize(this);
+    }
+
+    private void ReleaseResources()
     {
         if (_disposed)
         {
@@ -454,8 +511,7 @@ public class MeilisearchService:IDisposable
         }
         _disposed = true;
 
-        CheckIfNeedDocumentSync();
-        _documentCollection.CollectionChanged -= CheckIfNeedDocumentSync;
+        _documentCollection.CollectionChanged -= OnDocumentCollectionChanged;
         Stop();
 
         var proc = process;
@@ -466,7 +522,6 @@ public class MeilisearchService:IDisposable
         }
 
         _httpClient.Dispose();
-        GC.SuppressFinalize(this);
     }
     #endregion
 }
