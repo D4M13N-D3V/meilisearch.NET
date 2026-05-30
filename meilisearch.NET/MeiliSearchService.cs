@@ -39,7 +39,6 @@ public class MeilisearchService:IDisposable
         _documentCollection.CollectionChanged += CheckIfNeedDocumentSync;
         StartMeilisearch().Wait();
         EnsureRepositoryIndexExists().Wait();
-        _logger.LogTrace("API Key: " + _apiKey);
     }
     
 
@@ -127,10 +126,12 @@ public class MeilisearchService:IDisposable
         var host = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) 
             ? "localhost" 
             : "127.0.0.1";
-        var args = "--http-addr "+host+":" + _meiliConfiguration.MeiliPort 
-                  + " --env development --db-path " 
-                  + Path.Combine(AppContext.BaseDirectory, "db")
-                  + " --master-key " + _apiKey;
+        // The master key is passed via the MEILI_MASTER_KEY environment variable
+        // rather than on the command line: process arguments are world-readable
+        // (ps / /proc/<pid>/cmdline) and would leak the key to other local users.
+        var args = "--http-addr "+host+":" + _meiliConfiguration.MeiliPort
+                  + " --env production --db-path "
+                  + Path.Combine(AppContext.BaseDirectory, "db");
 
         var processStartInfo = new ProcessStartInfo
         {
@@ -141,6 +142,7 @@ public class MeilisearchService:IDisposable
             RedirectStandardError = false,
             CreateNoWindow = false,
         };
+        processStartInfo.Environment["MEILI_MASTER_KEY"] = _apiKey;
 
         process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true};
         process.Exited += (sender, e) =>
