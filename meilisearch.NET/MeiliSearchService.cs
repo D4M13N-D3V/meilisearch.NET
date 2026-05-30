@@ -25,7 +25,10 @@ public class MeilisearchService:IDisposable
     private readonly string _indexBasePath = Path.Combine(AppContext.BaseDirectory, "db", "indexes" );
     private readonly string _apiKey;
     private const int THRESHOLD = 10000;
-    private Process process;
+    private Process? process;
+    private volatile bool _stopping;
+    private bool _disposed;
+    private int _restartAttempts;
     private ObservableCollection<KeyValuePair<string,IDocument>> _documentCollection;
 
     public MeilisearchService(HttpClient httpClient, ILogger<MeilisearchService> logger, MeiliSearchConfiguration meiliConfiguration)
@@ -145,26 +148,47 @@ public class MeilisearchService:IDisposable
         processStartInfo.Environment["MEILI_MASTER_KEY"] = _apiKey;
 
         process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true};
-        process.Exited += (sender, e) =>
-        {
-            _logger.LogWarning("Meilisearch process has exited. Restarting...");
-            _ = StartMeilisearch(); // Restart the process
-        };
-        process.Disposed += (sender, eventArgs) => 
-        {
-            _logger.LogWarning("Meilisearch process has exited. Restarting...");
-            _ = StartMeilisearch(); // Restart the process
-        };
+        process.Exited += OnProcessExited;
         try
         {
             process.Start();
             await Task.Delay(5000); // Wait for the process to start
+            _restartAttempts = 0; // Successful start resets the backoff.
             _logger.LogInformation($"Started Meilisearch process using binary: {binaryName}");
         }
         catch (Exception ex)
         {
             _logger.LogError($"Failed to start Meilisearch: {ex.Message}");
             throw;
+        }
+    }
+
+    // Single restart handler with exponential backoff. Does nothing during an
+    // intentional shutdown (Stop/Dispose), so the server actually stays down.
+    private async void OnProcessExited(object? sender, EventArgs e)
+    {
+        if (_stopping)
+        {
+            return;
+        }
+
+        var attempt = Interlocked.Increment(ref _restartAttempts);
+        var delay = Math.Min(30000, 1000 * (int)Math.Pow(2, Math.Min(attempt - 1, 5)));
+        _logger.LogWarning($"Meilisearch process exited unexpectedly. Restarting in {delay}ms (attempt {attempt})...");
+        await Task.Delay(delay);
+
+        if (_stopping)
+        {
+            return;
+        }
+
+        try
+        {
+            await StartMeilisearch();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Failed to restart Meilisearch: {ex.Message}");
         }
     }
     
@@ -301,21 +325,53 @@ public class MeilisearchService:IDisposable
         return  result;
     }
 
-    public async void Start()
+    public Task Start()
     {
-        await StartMeilisearch();
+        _stopping = false;
+        return StartMeilisearch();
     }
 
-    public async void Stop()
+    public void Stop()
     {
-        process.Kill();
+        _stopping = true; // Suppress the auto-restart handler for this shutdown.
+        var proc = process;
+        if (proc is not { HasExited: false })
+        {
+            return;
+        }
+
+        try
+        {
+            proc.Kill(entireProcessTree: true);
+            proc.WaitForExit(5000);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Failed to stop Meilisearch process: {ex.Message}");
+        }
     }
-    
+
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
+
         CheckIfNeedDocumentSync();
+        _documentCollection.CollectionChanged -= CheckIfNeedDocumentSync;
         Stop();
+
+        var proc = process;
+        if (proc != null)
+        {
+            proc.Exited -= OnProcessExited;
+            proc.Dispose();
+        }
+
         _httpClient.Dispose();
+        GC.SuppressFinalize(this);
     }
     #endregion
 }
