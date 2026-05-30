@@ -30,6 +30,8 @@ public class MeilisearchService:IDisposable
     private volatile bool _stopping;
     private bool _disposed;
     private int _restartAttempts;
+    private readonly object _syncLock = new();
+    private bool _syncing;
     private ObservableCollection<KeyValuePair<string,IDocument>> _documentCollection;
 
     public MeilisearchService(HttpClient httpClient, ILogger<MeilisearchService> logger, MeiliSearchConfiguration meiliConfiguration)
@@ -269,18 +271,44 @@ public class MeilisearchService:IDisposable
 
     private void CheckIfNeedDocumentSync(int? threshold = null)
     {
-        threshold = threshold ?? 0;
-        if(_documentCollection.Count>=threshold)
+        var effectiveThreshold = threshold ?? 0;
+
+        lock (_syncLock)
         {
-            _logger.LogInformation("Threshold reached, syncing metadata to server.");
-            var grouped = _documentCollection.GroupBy(pair => pair.Key)
-                .ToDictionary(group => group.Key, group => group.Select(pair => pair.Value).ToList());
-            foreach (var repository in grouped)
+            // _syncing guards against re-entrancy: removing synced items below
+            // raises CollectionChanged, which calls back into this method.
+            if (_syncing || _documentCollection.Count < effectiveThreshold)
             {
-                var repositoryIndex = _client.GetIndexAsync(repository.Key).Result;
-                var documents = _documentCollection.ToList();
-                _documentCollection.Clear();
-                var result = RetryAsync(() => repositoryIndex.AddDocumentsAsync(repository.Value, "id")).Result;
+                return;
+            }
+
+            _syncing = true;
+            try
+            {
+                _logger.LogInformation("Threshold reached, syncing metadata to server.");
+
+                // Snapshot what we sync so documents added during the push are
+                // preserved, and only remove items after a successful push (no
+                // data loss if the server call fails).
+                var snapshot = _documentCollection.ToList();
+                var grouped = snapshot
+                    .GroupBy(pair => pair.Key)
+                    .ToDictionary(group => group.Key, group => group.Select(pair => pair.Value).ToList());
+
+                foreach (var repository in grouped)
+                {
+                    var repositoryIndex = _client.GetIndexAsync(repository.Key).Result;
+                    RetryAsync(() => repositoryIndex.AddDocumentsAsync(repository.Value, "id")).Wait();
+                }
+
+                foreach (var item in snapshot)
+                {
+                    _documentCollection.Remove(item);
+                }
+            }
+            finally
+            {
+                _syncing = false;
             }
         }
     }
@@ -383,7 +411,10 @@ public class MeilisearchService:IDisposable
     public void AddDocument(string repositoryId, IDocument document)
     {
         _logger.LogTrace($"Adding document '{document.Id}' to repository '{repositoryId}'...");
-        _documentCollection.Add(new KeyValuePair<string, IDocument>(repositoryId, document));
+        lock (_syncLock)
+        {
+            _documentCollection.Add(new KeyValuePair<string, IDocument>(repositoryId, document));
+        }
         _logger.LogInformation($"Document {document.Id} added to collection.");
     }
 
