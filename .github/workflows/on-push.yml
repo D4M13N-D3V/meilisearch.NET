@@ -57,17 +57,24 @@ jobs:
           dotnet build --configuration Release
           dotnet pack ./meilisearch.NET/meilisearch.NET.csproj --output nuget-packages --configuration Release -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
 
-      - name: Publish package to NuGet registry
+      - name: Publish package to GitHub Packages
         run: |
-          dotnet nuget push nuget-packages/*.nupkg --skip-duplicate -s "https://git.d4m13n.dev/api/packages/damien/nuget/index.json" --api-key ${{ secrets.PACKAGE_TOKEN }}
+          dotnet nuget push nuget-packages/*.nupkg \
+            --skip-duplicate \
+            --no-symbols \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key ${{ secrets.GITHUB_TOKEN }}
+        # Uses the built-in GITHUB_TOKEN (job has packages: write). GitHub
+        # Packages doesn't accept .snupkg symbol packages, so --no-symbols.
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.gitversion.outputs.SemVer }}
           name: Release ${{ steps.gitversion.outputs.SemVer }}
-          body: "https://git.d4m13n.dev/damien/meilisearch.NET/packages 
-          Automated release of MeiliSearch.NET version ${{ steps.gitversion.outputs.SemVer }}."
+          body: |
+            Automated release of meilisearch.NET ${{ steps.gitversion.outputs.SemVer }}.
+            Package: https://github.com/${{ github.repository }}/packages
           files: nuget-packages/*.nupkg
           draft: false
           prerelease: false
