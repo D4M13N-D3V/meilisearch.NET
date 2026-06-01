@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to pack & publish (e.g. 1.2.3, no leading v)."
+        required: true
+        type: string
+
+# Never run two publishes at once.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Pack & publish to GitHub Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GitHub Packages (NuGet)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Resolve version
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}" # strip leading v from the tag
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $version"
+
+      - name: Restore
+        run: dotnet restore meilisearch.NET.sln
+
+      - name: Build
+        run: dotnet build meilisearch.NET.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test meilisearch.NET.sln --no-build --configuration Release --verbosity normal
+
+      - name: Pack
+        run: >-
+          dotnet pack meilisearch.NET/meilisearch.NET.csproj
+          --configuration Release
+          --no-build
+          -p:Version=${{ steps.vars.outputs.version }}
+          --output artifacts
+
+      - name: Push to GitHub Packages
+        run: >-
+          dotnet nuget push "artifacts/*.nupkg"
+          --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          --api-key ${{ secrets.GITHUB_TOKEN }}
+          --skip-duplicate
