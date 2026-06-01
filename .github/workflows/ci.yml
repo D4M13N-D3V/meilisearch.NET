@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      # No LFS: the committed pointer files are enough to compile. The real
+      # binaries (~120 MB each) are only needed to actually launch Meilisearch,
+      # which the unit tests do not do.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore meilisearch.NET.sln
+
+      - name: Build
+        run: dotnet build meilisearch.NET.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test meilisearch.NET.sln --no-build --configuration Release --verbosity normal
+
+  trivy-fs:
+    name: Trivy filesystem scan (report)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy scan (vuln, secret, misconfig)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+        # Report-only: a dependency CVE shouldn't block PRs. Findings surface
+        # in the Security tab and via Dependabot.
+
+      - name: Upload results to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
