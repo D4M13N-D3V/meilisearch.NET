@@ -14,7 +14,7 @@ jobs:
           rm ./* -r || true
           rm ./.??* -r  || true
         
-      - uses: actions/setup-dotnet@v3
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
     
