@@ -47,7 +47,7 @@ jobs:
           git push origin ${{ steps.gitversion.outputs.SemVer }}
 
       - name: Update package version
-        uses: vers-one/dotnet-project-version-updater@v1.6
+        uses: vers-one/dotnet-project-version-updater@v1.8
         with:
           file: "./meilisearch.NET/meilisearch.NET.csproj"
           version: ${{ steps.gitversion.outputs.SemVer }}
