@@ -1,8 +1,7 @@
-﻿using System;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using meilisearch.NET;
-using meilisearch.NET.Configurations;
 using meilisearch.NET.example;
 using meilisearch.NET.Extensions;
 using Microsoft.Extensions.Configuration;
@@ -16,24 +15,24 @@ public class Program
     {
         ServicePointManager.SecurityProtocol = SecurityProtocolType.SystemDefault;
         IHost host = CreateHostBuilder(args).Build();
-        var testService = host.Services.GetService<test>();
         await host.RunAsync();
     }
-    
+
     public static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
             .ConfigureAppConfiguration((hostingContext, configuration) =>
             {
                 configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                configuration.AddEnvironmentVariables(); 
-                configuration.AddCommandLine(args); 
+                configuration.AddEnvironmentVariables();
+                configuration.AddCommandLine(args);
             })
             .ConfigureServices((hostContext, services) =>
             {
                 services.AddMeiliSearchService();
-                services.AddSingleton<test>();
+                // Registered after the Meilisearch service so it starts only
+                // once the server's StartAsync has completed.
+                services.AddHostedService<TestWorker>();
 
-                // Add logging configuration
                 services.AddLogging(builder =>
                 {
                     builder.ClearProviders();
@@ -43,61 +42,36 @@ public class Program
              })
             .UseConsoleLifetime(options =>
             {
-                options.SuppressStatusMessages = true; 
+                options.SuppressStatusMessages = true;
             });
 }
 
-public class test
+public class TestWorker : IHostedService
 {
-    private readonly ILogger<test> _logger;
+    private readonly MeilisearchService _service;
+    private readonly ILogger<TestWorker> _logger;
 
-    public test(MeilisearchService service, ILogger<test> logger)
+    public TestWorker(MeilisearchService service, ILogger<TestWorker> logger)
     {
+        _service = service ?? throw new ArgumentNullException(nameof(service));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
 
-        // Wait until Meilisearch is running
-        while (!service.IsMeilisearchRunning())
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await _service.CreateIndexAsync<Document>("test");
+
+        for (var i = 0; i < 7; i++)
         {
-            _logger.LogInformation("Waiting for Meilisearch to start...");
-            Task.Delay(1000).Wait(); // Wait for 1 second before checking again
+            _service.AddDocument("test", new Document
+            {
+                Id = Guid.NewGuid(),
+                message = "Hello, Meilisearch!"
+            });
         }
 
-        service.CreateIndex<document>("test");
-        service.AddDocument("test", new document()
-        {
-            Id = Guid.NewGuid(),
-            message = "Hello, Meilisearch!"
-        });
-        service.AddDocument("test", new document()
-        {
-            Id = Guid.NewGuid(),
-            message = "Hello, Meilisearch!"
-        });
-        service.AddDocument("test", new document()
-        {
-            Id = Guid.NewGuid(),
-            message = "Hello, Meilisearch!"
-        });
-        service.AddDocument("test", new document()
-        {
-            Id = Guid.NewGuid(),
-            message = "Hello, Meilisearch!"
-        });
-        service.AddDocument("test", new document()
-        {
-            Id = Guid.NewGuid(),
-            message = "Hello, Meilisearch!"
-        });
-        service.AddDocument("test", new document()
-        {
-            Id = Guid.NewGuid(),
-            message = "Hello, Meilisearch!"
-        });
-        service.AddDocument("test", new document()
-        {
-            Id = Guid.NewGuid(),
-            message = "Hello, Meilisearch!"
-        });
-        _logger.LogInformation("Test service initialized.");
+        _logger.LogInformation("Test worker initialized.");
     }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
