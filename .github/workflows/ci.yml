@@ -20,7 +20,7 @@ jobs:
       # No LFS: the committed pointer files are enough to compile. The real
       # binaries (~120 MB each) are only needed to actually launch Meilisearch,
       # which the unit tests do not do.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -42,7 +42,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Trivy scan (vuln, secret, misconfig)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
