@@ -1,0 +1,8 @@
+# SHA-256 checksums of the bundled Meilisearch binaries.
+# Verified at startup before the binary is launched (see MeilisearchService.VerifyBinary).
+# These values are the Git LFS object ids (content hashes) of the binaries shipped with this package.
+55bd847a256899214a08373491fc1484a977b6ac79033151551388f27bebc3fb  meilisearch-linux-x64
+0d67fc81232bcfad2ee748af8fcc888584b3f42ffbde816b5aa8e850abeaf545  meilisearch-linux-arm
+98abbf54ce9745ffa12990f0fcfeaf3e4d321c783a1553649f12dca31eab9fd8  meilisearch-macos-x64
+464f6704156121e9835e3747ae91e72e259ef28a5f54b7b07f009ff633763e61  meilisearch-macos-arm
+2de2d0cee0f6d8d3be5080b4e4506d31ed5a36104d24e9e5d1af087f761ce41c  meilisearch-windows.exe

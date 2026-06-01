@@ -9,6 +9,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <!-- Tamper-resistant checksum manifest compiled into the assembly. -->
+      <EmbeddedResource Include="binaries.sha256" />
+    </ItemGroup>
+
+    <ItemGroup>
       <None Remove="meilisearch-linux-arm" />
       <Content Include="meilisearch-linux-arm">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

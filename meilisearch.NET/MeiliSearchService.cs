@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security;
+using System.Security.Cryptography;
 using Meilisearch;
 using meilisearch.NET.Configurations;
 using meilisearch.NET.Enums;
@@ -102,6 +103,71 @@ public class MeilisearchService:IDisposable
         throw new PlatformNotSupportedException("Current platform and architecture combination is not supported");
     }
 
+    // Verifies the on-disk binary against the SHA-256 manifest embedded in this
+    // assembly before it is ever executed. The manifest lives inside the DLL so
+    // it cannot be swapped alongside a tampered binary in the output directory.
+    private void VerifyBinary(string binaryName, string binaryPath)
+    {
+        var expected = GetExpectedChecksum(binaryName);
+        if (expected is null)
+        {
+            throw new SecurityException(
+                $"No checksum is recorded for Meilisearch binary '{binaryName}'; refusing to launch an unverified binary.");
+        }
+
+        string actual;
+        using (var stream = File.OpenRead(binaryPath))
+        {
+            actual = Convert.ToHexString(SHA256.HashData(stream));
+        }
+
+        if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogError($"Checksum mismatch for {binaryName}: expected {expected}, got {actual}.");
+            throw new SecurityException(
+                $"Meilisearch binary '{binaryName}' failed integrity verification; refusing to launch.");
+        }
+
+        _logger.LogTrace($"Verified integrity of Meilisearch binary '{binaryName}'.");
+    }
+
+    private static string? GetExpectedChecksum(string binaryName)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourceName = assembly.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("binaries.sha256", StringComparison.OrdinalIgnoreCase));
+        if (resourceName is null)
+        {
+            return null;
+        }
+
+        using var stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream is null)
+        {
+            return null;
+        }
+
+        using var reader = new StreamReader(stream);
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+            {
+                continue;
+            }
+
+            // Format: "<hex-sha256>  <filename>" (sha256sum style).
+            var parts = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2 && string.Equals(parts[1], binaryName, StringComparison.Ordinal))
+            {
+                return parts[0];
+            }
+        }
+
+        return null;
+    }
+
     private async Task StartMeilisearch()
     {
         var binaryName = GetMeilisearchBinaryName();
@@ -113,13 +179,17 @@ public class MeilisearchService:IDisposable
             throw new FileNotFoundException($"Could not find Meilisearch binary: {binaryName}");
         }
 
-        // Set execute permissions on Unix-like systems
+        VerifyBinary(binaryName, binaryPath);
+
+        // Set execute permissions on Unix-like systems. Uses the managed API
+        // (no chmod subprocess, no command-line quoting hazards).
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             try
             {
-                var chmod = Process.Start("chmod", $"+x {binaryPath}");
-                chmod?.WaitForExit();
+                var current = File.GetUnixFileMode(binaryPath);
+                File.SetUnixFileMode(binaryPath,
+                    current | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
             }
             catch (Exception ex)
             {
