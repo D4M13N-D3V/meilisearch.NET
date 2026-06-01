@@ -68,7 +68,7 @@ jobs:
         # Packages doesn't accept .snupkg symbol packages, so --no-symbols.
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.gitversion.outputs.SemVer }}
           name: Release ${{ steps.gitversion.outputs.SemVer }}
