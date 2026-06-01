@@ -1,8 +1,9 @@
-﻿using meilisearch.NET.Interfaces;
+using meilisearch.NET.Interfaces;
 
 namespace meilisearch.NET.example;
 
-public class document:IDocument
+public class Document : IDocument
 {
-    public string message { get; set; }
+    public Guid Id { get; set; }
+    public string message { get; set; } = string.Empty;
 }

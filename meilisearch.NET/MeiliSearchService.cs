@@ -26,7 +26,11 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
     private readonly MeiliSearchConfiguration _meiliConfiguration;
     private readonly string _apiKey;
     private const int THRESHOLD = 10000;
-    private Process? process;
+    // How long to wait for the server / an index operation to settle.
+    private const int ServerSettleDelayMilliseconds = 5000;
+    // How long to wait for the process to exit after a kill request.
+    private const int ProcessExitWaitMilliseconds = 5000;
+    private Process? _process;
     private volatile bool _stopping;
     private bool _disposed;
     private int _restartAttempts;
@@ -40,7 +44,10 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
         _meiliConfiguration = meiliConfiguration;
         _logger = logger;
         _apiKey = ResolveApiKey(meiliConfiguration);
-        _client = new MeilisearchClient("http://localhost:"+meiliConfiguration.MeiliPort, _apiKey );
+        // Use the injected, factory-managed HttpClient (connection pooling) for
+        // the Meilisearch client rather than letting it create its own.
+        _httpClient.BaseAddress = new Uri("http://localhost:" + meiliConfiguration.MeiliPort);
+        _client = new MeilisearchClient(_httpClient, _apiKey);
         _documentCollection = new ObservableCollection<KeyValuePair<string,IDocument>>();
         _documentCollection.CollectionChanged += OnDocumentCollectionChanged;
         // Startup is deferred to StartAsync (IHostedService) so the constructor
@@ -84,7 +91,7 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
     }
     private async Task EnsureRepositoryIndexExists()
     {
-        await Task.Delay(5000);
+        await Task.Delay(ServerSettleDelayMilliseconds);
         var indexes = await _client.GetAllIndexesAsync();
         if (indexes.Results.Any(x => x.Uid == "index_bindings"))
         {
@@ -233,12 +240,12 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
         };
         processStartInfo.Environment["MEILI_MASTER_KEY"] = _apiKey;
 
-        process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true};
-        process.Exited += OnProcessExited;
+        _process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true};
+        _process.Exited += OnProcessExited;
         try
         {
-            process.Start();
-            await Task.Delay(5000); // Wait for the process to start
+            _process.Start();
+            await Task.Delay(ServerSettleDelayMilliseconds); // Wait for the process to start
             _restartAttempts = 0; // Successful start resets the backoff.
             _logger.LogInformation($"Started Meilisearch process using binary: {binaryName}");
         }
@@ -403,7 +410,7 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
 
         _logger.LogTrace($"Creating index '{indexName}'...");
         await _client.CreateIndexAsync(indexName);
-        await Task.Delay(5000);
+        await Task.Delay(ServerSettleDelayMilliseconds);
         var index = await _client.GetIndexAsync(indexName);
         await index.UpdateFilterableAttributesAsync(GetPropertiesInCamelCase<T>());
         _logger.LogInformation($"{indexName} index created!");
@@ -452,10 +459,43 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
         return result;
     }
 
+    // Current lifecycle state of the embedded Meilisearch process.
+    public MeiliSearchStatus Status
+    {
+        get
+        {
+            if (_disposed)
+            {
+                return MeiliSearchStatus.Stopped;
+            }
+
+            var proc = _process;
+            if (proc is null)
+            {
+                return MeiliSearchStatus.Stopped;
+            }
+
+            if (_stopping)
+            {
+                return MeiliSearchStatus.Stopping;
+            }
+
+            return proc.HasExited ? MeiliSearchStatus.Crashed : MeiliSearchStatus.Running;
+        }
+    }
+
+    // Stops the running process and starts a fresh one.
+    public async Task RestartAsync()
+    {
+        Stop();
+        _stopping = false;
+        await StartMeilisearch();
+    }
+
     public void Stop()
     {
         _stopping = true; // Suppress the auto-restart handler for this shutdown.
-        var proc = process;
+        var proc = _process;
         if (proc is not { HasExited: false })
         {
             return;
@@ -464,7 +504,7 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
         try
         {
             proc.Kill(entireProcessTree: true);
-            proc.WaitForExit(5000);
+            proc.WaitForExit(ProcessExitWaitMilliseconds);
         }
         catch (Exception ex)
         {
@@ -514,7 +554,7 @@ public class MeilisearchService : IHostedService, IAsyncDisposable, IDisposable
         _documentCollection.CollectionChanged -= OnDocumentCollectionChanged;
         Stop();
 
-        var proc = process;
+        var proc = _process;
         if (proc != null)
         {
             proc.Exited -= OnProcessExited;

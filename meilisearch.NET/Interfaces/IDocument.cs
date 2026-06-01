@@ -1,6 +1,6 @@
-﻿namespace meilisearch.NET.Interfaces;
+namespace meilisearch.NET.Interfaces;
 
-public class IDocument
+public interface IDocument
 {
-    public Guid Id { get; set; }
+    Guid Id { get; set; }
 }
