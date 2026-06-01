@@ -10,6 +10,8 @@ public static class ServiceCollectionExtension
         services.AddHttpClient<MeilisearchService>();
         services.AddSingleton<MeiliSearchConfiguration>();
         services.AddSingleton<MeilisearchService>();
+        // Start/stop the same singleton via the host lifecycle (non-blocking startup).
+        services.AddHostedService(sp => sp.GetRequiredService<MeilisearchService>());
         return services;
     }
 }
